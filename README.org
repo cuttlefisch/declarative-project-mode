@@ -16,7 +16,7 @@ add a JSON object with the following properties:
   "project-deps": [],
   "project-local-files": [],
   "project-copy-files": [],
-  "treemacs-workspace": ["my_second_workspace", "my_workspace"]
+  "treemacs-workspaces": ["my_second_workspace", "my_workspace"]
 }
 #+end_src
 - required-resources: A list of resources that must exist for the project to be
@@ -26,6 +26,7 @@ add a JSON object with the following properties:
   project directory.
 - project-copy-files: A list of files to be copied from their current location to the
   project directory with a different name.
+- treemacs-workspaces: A list of Treemacs workspace names this project should be added to.
 
 The mode can be activated by visiting a file in the project directory with the .project
 file or by running (my-project-mode 1) in the project directory
@@ -46,5 +47,5 @@ Future plans include:
     -
     project-copy-files:
     -
-    treemacs-workspace: "my_workspace"
+    treemacs-workspaces: "my_workspace"
     #+end_src
