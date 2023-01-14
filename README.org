@@ -10,23 +10,41 @@ installing git repositories as dependencies, and warning about missing required 
 To use the mode, create a file called .project in the root of your project directory and
 add a JSON object with the following properties:
 #+begin_src json
-{ "required-resources": ["README.org"], "project-deps": [],
-  "project-local-files": [], "project-copy-files": [] }
+{
+  "project-name": "yeetme",
+  "required-resources": ["README.org"],
+  "project-deps": [],
+  "project-local-files": [],
+  "project-copy-files": [],
+  "treemacs-workspace": ["my_second_workspace", "my_workspace"]
+}
 #+end_src
- - required-resources: A list of resources that must exist for the project to be
-   considered complete.
- - project-deps: A list of git repositories to be cloned as dependencies.
- - project-local-files: A list of files to be copied from their current location to the
-   project directory.
- - project-copy-files: A list of files to be copied from their current location to the
-   project directory with a different name.
+- required-resources: A list of resources that must exist for the project to be
+  considered complete.
+- project-deps: A list of git repositories to be cloned as dependencies.
+- project-local-files: A list of files to be copied from their current location to the
+  project directory.
+- project-copy-files: A list of files to be copied from their current location to the
+  project directory with a different name.
 
 The mode can be activated by visiting a file in the project directory with the .project
 file or by running (my-project-mode 1) in the project directory
 
 Future plans include:
- - Expanding the JSON template to include attributes per project, such as project style
-   (e.g. elisp, python, dotnet) and src/dest mappings (e.g. choose where to clone
-   files/repos)
- - Improving the minor-mode definition, such as using proper custom variables and adding
-   enable/disable behavior.
+- Expanding the JSON template to include attributes per project, such as project style
+  (e.g. elisp, python, dotnet) and src/dest mappings (e.g. choose where to clone
+  files/repos)
+- Improving the minor-mode definition, such as using proper custom variables and adding
+  enable/disable behavior.
+- Yaml support
+    #+begin_src yaml
+    required-resources:
+    - README.org
+    project-deps:
+    - git@github.com:cuttlefisch/declarative-project-mode.git
+    project-local-files:
+    -
+    project-copy-files:
+    -
+    treemacs-workspace: "my_workspace"
+    #+end_src
