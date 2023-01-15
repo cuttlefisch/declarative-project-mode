@@ -1,8 +1,13 @@
-uses: leotaku/elisp-check@master
 name: Emacs Lisp Checks
 on:
   pull_request:
     branches:
       - main
-with:
-  file: declarative-package-mode.el
+
+jobs:
+  emacs_lisp_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: leotaku/elisp-check@master
+        with:
+          file: declarative-package-mode.el
