@@ -22,7 +22,7 @@ Note that any omitted ~dest~ or ~link~ field results in that resource's creation
 project root directory, named as the ~Filename.extension~.
 
 This project prefers Yaml.
-#+begin_src yaml :tangle /tmp/yeet/proj/.project
+#+begin_src yaml
 project-name: "Declarative Project Mode"
 required-resources:
   - README.org
