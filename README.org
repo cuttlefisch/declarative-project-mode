@@ -11,24 +11,37 @@ To use the mode, create a file called .project in the root of your project direc
 add a Yaml or JSON object with the following properties:
 - required-resources: A list of resources that must exist for the project to be
   considered complete.
-- project-deps: A list of git repositories to be cloned as dependencies.
-- project-local-files: A list of files to be copied from their current location to the
+- deps: A list of git repositories to be cloned as dependencies.
+- local-files: A list of files to be copied from their current location to the
   project directory.
-- project-copy-files: A list of files to be copied from their current location to the
-  project directory with a different name.
+- symlinks: List of link/target pairs to create as symlinks relative to the project
+  directory.
 - treemacs-workspaces: A list of Treemacs workspace names this project should be added to.
+
+Note that any omitted ~dest~ or ~link~ field results in that resource's creation in the
+project root directory, named as the ~Filename.extension~.
 
 This project prefers Yaml.
 #+begin_src yaml
 project-name: "Declarative Project Mode"
 required-resources:
   - README.org
-project-deps:
-  - git@github.com:cuttlefisch/declarative-project-mode.git
-project-local-files:
-  -
-project-copy-files:
-  -
+deps:
+  - src: git@github.com:cuttlefisch/declarative-project-mode.git
+    dest: DCM
+  - src: git@github.com:cuttlefisch/declarative-project-mode.git
+    # (↑) use default dest for git clone
+local-files:
+  - src: ~/path/to/src
+    dest: path/to/dest
+    # (↑) path relative to project root dir
+  - src: /path/to/src
+    # (↑) default dest is project root dir
+symlinks:
+  - targ: /path/to/link-target
+    link: path/to/symlink
+  - targ: ~/path/to/link-target
+    # (↑) default link is project root dir
 treemacs-workspaces:
   - "Minor Modes"
 #+end_src
@@ -55,9 +68,17 @@ each specified worksace. This should help decentralize workspace configuration,
 helping construct conceptual groupings of projects regardless of their location in the
 filesystem.
 
+** Locally Copy or Symlink Resources
+It's often useful to maintain documentation in a form of knowlegebase such as Org Roam.
+This approach allows us to maintain a declarative set of symlinks to connect a project to
+the documentation, Rather than adapt the documentation & knowlege-building process to
+conform to individual projects.
+
 * Future Plans
-- Expanding the JSON template to include attributes per project, such as project style
-  (e.g. elisp, python, dotnet) and src/dest mappings (e.g. choose where to clone
-  files/repos)
 - Improving the minor-mode-specific quality, such as using proper custom variables and
   adding enable/disable behavior.
+- Support custom scripts or commands with ~function~, ~args~ step
+- Support custom resource types & install methods
+    - cloud storage backend
+    - s3 backend
+    - package managers
