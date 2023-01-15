@@ -5,8 +5,8 @@
 ;; Author: Hayden Stanko <hayden@cuttle.codes>
 ;; Maintainer: Hayden Stanko <hayden@cuttle.codes>
 ;; Created: January 13, 2023
-;; Modified: January 14, 2023
-;; Version: 0.0.2
+;; Modified: January 15, 2023
+;; Version: 0.0.3
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
 ;; Package-Requires: ((emacs "26.1"))
@@ -26,13 +26,14 @@
 ;;
 ;;; Commentary:
 ;;
-;; Declarative Project mode is a minor mode for managing project resources.
-;; The mode is triggered by visiting a directory containing a .project file.
-;; The .project file should be in json format and contain the following fields
-;; "required-resources", "project-deps", "project-local-files", "project-copy-files"
+;; Declarative Project mode is a minor mode for managing project resources. The
+;; mode is triggered by visiting a directory containing a .project file. The
+;; .project file should be in yaml or json format and may contain the following
+;; fields "project-name", "required-resources", "deps", "local-files",
+;; "symlinks", "treemacs-workspaces".
 ;;
-;; Keybindings:
-;;   - `C-c C-c i`: Run the install-project command
+;; Keybindings: - `C-c C-c i`: Run the install-project command when visiting
+;; .project file
 ;;
 ;;; Code:
 (require 'json)
@@ -49,31 +50,41 @@
 
 (defun declarative-project--install-project-dependencies (project-resources)
   "Clone any git dependencies locally in PROJECT-RESOURCES."
-  (when-let ((project-deps (gethash 'project-deps project-resources)))
+  (when-let ((project-deps (gethash 'deps project-resources)))
     (seq-map (lambda (dep)
-               (unless (file-exists-p (file-name-base dep))
-                 (shell-command (concat "git clone " dep))))
+               (let ((src (gethash 'src dep))
+                     (dest (or (gethash 'dest dep) "")))
+                 (unless (file-exists-p (file-name-base src))
+                   (shell-command (concat "git clone " src " " dest)))))
              project-deps)))
 
-(defun declarative-project--install-project-local-files (project-resources)
+(defun declarative-project--copy-local-files (project-resources)
   "Copy over any local files in PROJECT-RESOURCES."
-  (when-let ((project-local-files (gethash 'project-local-files project-resources)))
-    (when (car project-local-files)
-      (seq-map (lambda (file)
-                 (copy-file file (concat default-directory file) t))
-               project-local-files))))
+  (when-let ((local-files (gethash 'local-files project-resources)))
+    (seq-map (lambda (file)
+               (let* ((src (expand-file-name (gethash 'src file)))
+                      (dest (or (gethash 'dest file) (file-name-nondirectory src))))
+                 (if (file-directory-p src)
+                   (copy-directory src (concat default-directory dest) t t t)
+                   (if (file-exists-p src)
+                       (copy-file src (concat default-directory dest) t)
+                     (warn "No such file or directory:\t%s" src)))))
+             local-files)))
 
-(defun declarative-project--install-project-copy-files (project-resources)
-  "Copy and mutate local files in PROJECT-RESOURCES."
-  (when-let ((project-copy-files (gethash 'project-copy-files project-resources)))
-    (when (car project-copy-files)
-      (seq-map (lambda (file)
-                 (let ((new-file-name (concat
-                                       (file-name-sans-extension (file-name-nondirectory file))
-                                       "_modified"
-                                       (file-name-extension (file-name-nondirectory file)))))
-                   (copy-file file (concat default-directory new-file-name) t)))
-               project-copy-files))))
+
+(defun declarative-project--create-symlinks (project-resources)
+  "Copy over any local files in PROJECT-RESOURCES."
+  (when-let ((symlinks (gethash 'symlinks project-resources)))
+    (seq-map (lambda (link-def)
+               (let* ((targ (expand-file-name (gethash 'targ link-def)))
+                      (link (or (gethash 'link link-def)
+                                (file-name-nondirectory targ))))
+                 (if (file-exists-p targ)
+                     (progn
+                       (make-directory (file-name-parent-directory link) t)
+                       (make-symbolic-link targ (concat default-directory link) t))
+                   (warn "No such file or directory:\t%s" targ))))
+             symlinks)))
 
 (defun declarative-project--apply-treemacs-workspaces (project-resources)
   "Add project to any treemacs workspaces listed in PROJECT-RESOURCES."
@@ -102,8 +113,8 @@
           (puthash 'project-file project-file project-resources)
           (declarative-project--check-required-resources project-resources)
           (declarative-project--install-project-dependencies project-resources)
-          (declarative-project--install-project-local-files project-resources)
-          (declarative-project--install-project-copy-files project-resources)
+          (declarative-project--copy-local-files project-resources)
+          (declarative-project--create-symlinks project-resources)
           (declarative-project--apply-treemacs-workspaces project-resources)
           (message "...Finished Installation!"))))))
 
