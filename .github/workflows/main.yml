@@ -6,9 +6,7 @@ on:
 
 jobs:
   emacs_lisp_check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: leotaku/elisp-check@master
-        with:
-          file: declarative-package-mode.el
-          check: package-lint
+      uses: leotaku/elisp-check@master
+      with:
+        file: declarative-package-mode.el
+        check: package-lint
