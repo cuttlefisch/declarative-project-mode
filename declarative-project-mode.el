@@ -32,7 +32,7 @@
 ;; "required-resources", "project-deps", "project-local-files", "project-copy-files"
 ;;
 ;; Keybindings:
-;;   - `C-c i`: Run the install-project command
+;;   - `C-c C-c i`: Run the install-project command
 ;;
 ;;; Code:
 (require 'json)
