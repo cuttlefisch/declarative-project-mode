@@ -1,3 +1,0 @@
-uses: leotaku/elisp-check@master
-with:
-  file: declarative-package-mode.el
