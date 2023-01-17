@@ -54,9 +54,10 @@
   (when-let ((project-deps (gethash 'deps project-resources)))
     (seq-map (lambda (dep)
                (let ((src (gethash 'src dep))
-                     (dest (or (gethash 'dest dep) "")))
+                     (dest (or (gethash 'dest dep) ""))
+                     (args (org (gethash 'args dep) "")))
                  (unless (file-exists-p (file-name-base src))
-                   (shell-command (concat "git clone " src " " dest)))))
+                   (shell-command (concat "git clone " src " " dest " " args)))))
              project-deps)))
 
 (defun declarative-project--copy-local-files (project-resources)
