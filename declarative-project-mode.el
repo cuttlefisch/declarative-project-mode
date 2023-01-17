@@ -38,6 +38,7 @@
 ;;; Code:
 (require 'json)
 (require 'yaml-mode)
+(require 'yaml)
 (require 'treemacs)
 
 (defun declarative-project--check-required-resources (project-resources)
@@ -64,11 +65,14 @@
     (seq-map (lambda (file)
                (let* ((src (expand-file-name (gethash 'src file)))
                       (dest (or (gethash 'dest file) (file-name-nondirectory src))))
-                 (if (file-directory-p src)
-                   (copy-directory src (concat default-directory dest) t t t)
-                   (if (file-exists-p src)
-                       (copy-file src (concat default-directory dest) t)
-                     (warn "No such file or directory:\t%s" src)))))
+                 (cond
+                 ((file-directory-p src)
+                       (unless (file-directory-p (concat default-directory dest))
+                        (copy-directory src (concat default-directory dest) t t t)))
+                 ((file-exists-p src)
+                        (copy-file src (concat default-directory dest) t))
+                (t
+                   (warn "No such file or directory:\t%s" src)))))
              local-files)))
 
 
@@ -92,6 +96,12 @@
              (project-file (gethash 'project-file project-resources)))
     (seq-doseq (workspace project-workspaces)
       (let ((project-name (or (gethash 'project-name project-resources) workspace)))
+        (when treemacs-declarative-workspaces-mode
+        (treemacs-declarative-workspace--assign-project (list :name project-name
+                                                          :path (file-name-directory project-file)
+                                                          :path-status 'local-readable
+                                                          :is-disabled? nil)
+                                                        workspace))
         (treemacs-do-create-workspace workspace)
         (treemacs-with-workspace (treemacs-find-workspace-by-name workspace)
           (treemacs-do-add-project-to-workspace
