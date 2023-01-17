@@ -55,7 +55,7 @@
     (seq-map (lambda (dep)
                (let ((src (gethash 'src dep))
                      (dest (or (gethash 'dest dep) ""))
-                     (args (org (gethash 'args dep) "")))
+                     (args (or (gethash 'args dep) "")))
                  (unless (file-exists-p (file-name-base src))
                    (shell-command (concat "git clone " src " " dest " " args)))))
              project-deps)))
