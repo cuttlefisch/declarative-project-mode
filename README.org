@@ -30,6 +30,7 @@ deps:
   - src: git@github.com:cuttlefisch/declarative-project-mode.git
     dest: DCM
   - src: git@github.com:cuttlefisch/declarative-project-mode.git
+    args: "--branch some-branch-name"
     # (↑) use default dest for git clone
 local-files:
   - src: ~/path/to/src

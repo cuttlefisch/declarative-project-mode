@@ -9,7 +9,7 @@
 ;; Version: 0.0.3
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
-;; Package-Requires: ((emacs "26.1"))
+;; Package-Requires: ((emacs "26.1") (treemacs "3.0"))
 ;;
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -38,6 +38,7 @@
 ;;; Code:
 (require 'json)
 (require 'yaml-mode)
+(require 'yaml)
 (require 'treemacs)
 
 (defun declarative-project--check-required-resources (project-resources)
@@ -53,9 +54,10 @@
   (when-let ((project-deps (gethash 'deps project-resources)))
     (seq-map (lambda (dep)
                (let ((src (gethash 'src dep))
-                     (dest (or (gethash 'dest dep) "")))
+                     (dest (or (gethash 'dest dep) ""))
+                     (args (or (gethash 'args dep) "")))
                  (unless (file-exists-p (file-name-base src))
-                   (shell-command (concat "git clone " src " " dest)))))
+                   (shell-command (concat "git clone " src " " dest " " args)))))
              project-deps)))
 
 (defun declarative-project--copy-local-files (project-resources)
@@ -64,11 +66,14 @@
     (seq-map (lambda (file)
                (let* ((src (expand-file-name (gethash 'src file)))
                       (dest (or (gethash 'dest file) (file-name-nondirectory src))))
-                 (if (file-directory-p src)
-                   (copy-directory src (concat default-directory dest) t t t)
-                   (if (file-exists-p src)
-                       (copy-file src (concat default-directory dest) t)
-                     (warn "No such file or directory:\t%s" src)))))
+                 (cond
+                 ((file-directory-p src)
+                       (unless (file-directory-p (concat default-directory dest))
+                        (copy-directory src (concat default-directory dest) t t t)))
+                 ((file-exists-p src)
+                        (copy-file src (concat default-directory dest) t))
+                (t
+                   (warn "No such file or directory:\t%s" src)))))
              local-files)))
 
 
@@ -92,6 +97,12 @@
              (project-file (gethash 'project-file project-resources)))
     (seq-doseq (workspace project-workspaces)
       (let ((project-name (or (gethash 'project-name project-resources) workspace)))
+        (when treemacs-declarative-workspaces-mode
+        (treemacs-declarative-workspace--assign-project (list :name project-name
+                                                          :path (file-name-directory project-file)
+                                                          :path-status 'local-readable
+                                                          :is-disabled? nil)
+                                                        workspace))
         (treemacs-do-create-workspace workspace)
         (treemacs-with-workspace (treemacs-find-workspace-by-name workspace)
           (treemacs-do-add-project-to-workspace
