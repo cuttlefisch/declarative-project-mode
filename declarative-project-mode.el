@@ -41,6 +41,12 @@
 (require 'yaml)
 (require 'treemacs)
 
+
+(defcustom declarative-project--apply-treemacs-workspaces-hook nil
+  "Hooks to run whenever the treemacs-workspaces are applied."
+  :type 'hook
+  :group 'declarative-project-mode-hooks)
+
 (defun declarative-project--check-required-resources (project-resources)
   "Warn if any resources labeled required in PROJECT-RESOURCES are missing."
   (when-let ((required-resources (gethash 'required-resources project-resources)))
@@ -97,17 +103,12 @@
              (project-file (gethash 'project-file project-resources)))
     (seq-doseq (workspace project-workspaces)
       (let ((project-name (or (gethash 'project-name project-resources) workspace)))
-        (when treemacs-declarative-workspaces-mode
-        (treemacs-declarative-workspace--assign-project (list :name project-name
-                                                          :path (file-name-directory project-file)
-                                                          :path-status 'local-readable
-                                                          :is-disabled? nil)
-                                                        workspace))
         (treemacs-do-create-workspace workspace)
         (treemacs-with-workspace (treemacs-find-workspace-by-name workspace)
           (treemacs-do-add-project-to-workspace
            (file-name-directory project-file)
-           project-name))))))
+           project-name))))
+    (run-hook-with-args declarative-project--apply-treemacs-workspaces-hook project-resources)))
 
 
 (defun declarative-project--install-project ()
