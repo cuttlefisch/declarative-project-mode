@@ -108,7 +108,9 @@
           (treemacs-do-add-project-to-workspace
            (file-name-directory project-file)
            project-name))))
-    (run-hook-with-args declarative-project--apply-treemacs-workspaces-hook project-resources)))
+    (run-hook-with-args
+     'declarative-project--apply-treemacs-workspaces-hook
+     project-resources)))
 
 
 (defun declarative-project--install-project ()
