@@ -9,7 +9,7 @@
 ;; Version: 0.0.3
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
-;; Package-Requires: ((emacs "26.1"))
+;; Package-Requires: ((emacs "26.1") (treemacs "3.0"))
 ;;
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
