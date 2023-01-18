@@ -142,6 +142,6 @@
   (if declarative-project-mode
       (declarative-project--install-project)))
 
-(add-hook 'find-file-hook (lambda () (when (string-match-p "/.project$" (buffer-file-name)) (declarative-project-mode 1))))
+;(add-hook 'find-file-hook (lambda () (when (string-match-p "/.project$" (buffer-file-name)) (declarative-project-mode 1))))
 (provide 'declarative-project-mode)
 ;;; declarative-project-mode.el ends here
