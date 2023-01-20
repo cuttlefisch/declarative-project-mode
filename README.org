@@ -83,3 +83,6 @@ conform to individual projects.
     - cloud storage backend
     - s3 backend
     - package managers
+- Improved startup/shutdown checks for workspaces
+- Destination specification to help consolidate project definitions
+- Recursive project definitions, i.e. subprojects
