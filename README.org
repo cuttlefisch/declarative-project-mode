@@ -7,8 +7,8 @@ This mode allows you to define a project as a conceptual grouping of software co
 and then manage and install these components with ease. The mode currently supports
 installing git repositories as dependencies, and warning about missing required resources.
 
-To use the mode, create a file called .project in the root of your project directory and
-add a Yaml or JSON object with the following properties:
+To use the mode, create a file called PROJECT.yaml in the root of your project directory and
+add a Yaml object with the following properties:
 - required-resources: A list of resources that must exist for the project to be
   considered complete.
 - deps: A list of git repositories to be cloned as dependencies.
@@ -22,8 +22,9 @@ Note that any omitted ~dest~ or ~link~ field results in that resource's creation
 project root directory, named as the ~Filename.extension~.
 
 This project prefers Yaml.
-#+begin_src yaml
+#+begin_src yaml :tangle /tmp/PROJECT.yaml
 project-name: "Declarative Project Mode"
+root-dir: "/tmp/demo-project"
 required-resources:
   - README.org
 deps:
@@ -44,23 +45,13 @@ symlinks:
   - targ: ~/path/to/link-target
     # (↑) default link is project root dir
 treemacs-workspaces:
-  - "Minor Modes"
+  - "Demos"
 #+end_src
 
-#+begin_src json
-{
-  "project-name": "Declarative Project Mode",
-  "required-resources": ["README.org"],
-  "project-deps": [],
-  "project-local-files": [],
-  "project-copy-files": [],
-  "treemacs-workspaces": ["my_second_workspace", "my_workspace"]
-}
-#+end_src
-The mode can be activated by visiting a file in the project directory with the .project
+The mode can be activated by visiting a file in the project directory with the PROJECT.yaml
 file or by running (declarative-project-mode 1) in the project directory.
 
-*Install the project* by running "C-c C-c i" from the ~.project~ file.
+*Install the project* by running "C-c C-c i" from the ~PROJECT.yaml~ file.
 
 * Noteworthy Features
 ** Treemacs Workspace Assignment

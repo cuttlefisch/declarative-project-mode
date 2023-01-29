@@ -1,0 +1,14 @@
+project-name: "Declarative Project Mode Test Project"
+root-dir: "/tmp/dpm-test"
+required-resources:
+  - test/test-file-present.txt
+  - test/test-file-missing.txt
+deps:
+  - src: git@github.com:cuttlefisch/declarative-project-mode.git
+    dest: dpm-test-dep
+local-files:
+  - src: test/local-file.txt
+    dest: local-copy.txt
+symlinks:
+  - targ: test/symlink-target.txt
+    link: new/parent/dirs/symlink.txt
