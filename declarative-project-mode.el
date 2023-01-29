@@ -27,16 +27,15 @@
 ;;; Commentary:
 ;;
 ;; Declarative Project mode is a minor mode for managing project resources. The
-;; mode is triggered by visiting a directory containing a .project file. The
-;; .project file should be in yaml or json format and may contain the following
+;; mode is triggered by visiting a directory containing a PROJECT.yaml file. The
+;; PROJECT.yaml file should be in yaml format and may contain the following
 ;; fields "name", "required-resources", "deps", "local-files",
 ;; "symlinks", "treemacs-workspaces".
 ;;
 ;; Keybindings: - `C-c C-c i`: Run the install-project command when visiting
-;; .project file
+;; PROJECT.yaml file
 ;;
 ;;; Code:
-(require 'json)
 (require 'yaml-mode)
 (require 'yaml)
 (require 'treemacs)
@@ -53,9 +52,6 @@
 
 (defun declarative-project--make-declarative-project-with-defaults (&rest project-attrs)
   "Create a declarative-project with PROJECT-ATTRS."
-  (message "Entered make-declarative-project-with-defaults")
-  (pp project-attrs)
-  (message (format "project-attrs:\n %s \n\n" project-attrs))
   (apply 'make-declarative-project project-attrs))
 
 (defcustom declarative-project--apply-treemacs-workspaces-hook nil
@@ -63,6 +59,10 @@
   :type 'hook
   :group 'declarative-project-mode-hooks)
 
+(defcustom declarative-project--clobber nil
+  "When t don't prompt for confirmation when overwriting local files."
+  :type 'symbol
+  :group 'declarative-project-mode)
 
 (defun declarative-project--check-required-resources (project)
   "Warn if any resources labeled required in PROJECT are missing."
@@ -76,15 +76,16 @@
   "Clone any git dependencies locally in PROJECT."
   (when-let ((project-deps (declarative-project-deps project)))
     (seq-map (lambda (dep)
-               (let ((src (gethash 'src dep))
-                     (dest (or (gethash 'dest dep) ""))
-                     (args (or (gethash 'args dep) ""))
-                     (root-dir (declarative-project-root-directory project)))
+               (let* ((src (gethash 'src dep))
+                      (dest (or (gethash 'dest dep) ""))
+                      (args (or (gethash 'args dep) ""))
+                      (root-dir (declarative-project-root-directory project))
+                      (dest-path (concat root-dir "/" dest)))
                  ;; Clone any git dependency unless destination already
                  ;; exists.
                  (cond
-                  ((file-exists-p (file-name-base dest))
-                   (warn "Desintation for %s already exists:\t%s" src dest))
+                  ((and (file-exists-p dest-path) (not declarative-project--clobber))
+                   (warn "Desintation already exists:\t%s" dest-path))
                   (t
                    (shell-command (concat "git clone " src
                                           " " (concat root-dir "/" dest)
@@ -97,17 +98,18 @@
     (seq-map
      (lambda (file)
        (let* ((src (expand-file-name (gethash 'src file)))
+              (root-dir (declarative-project-root-directory project))
               (dest (or (gethash 'dest file)
-                        (file-name-nondirectory src))))
+                        (file-name-nondirectory src)))
+              (dest-path (concat root-dir "/" dest)))
          (cond
           ((file-directory-p src)
-           (unless (file-directory-p
-                    (concat (declarative-project-root-directory project) dest))
+           (unless (file-directory-p dest-path)
              (copy-directory src
-                             (concat (declarative-project-root-directory project) dest)
+                             dest-path
                              t t t)))
           ((file-exists-p src)
-           (copy-file src (concat (declarative-project-root-directory project) dest)
+           (copy-file src dest-path
                       t))
           (t
            (warn "No such file or directory:\t%s" src)))))
@@ -143,9 +145,11 @@
   "If user creates the target file, or it exists & is writable
 return t, else nil."
   (let ((root-dir (declarative-project-root-directory project)))
-    (if (file-writable-p root-dir)
-        t
-      (if (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir))
+    (if (file-exists-p root-dir)
+      t
+      (if (and  (file-writable-p root-dir)
+                (or declarative-project--clobber
+                    (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir))))
           (make-directory root-dir t)
         (message "Installation Aborted")
         nil))))
@@ -154,14 +158,13 @@ return t, else nil."
 (defun declarative-project--install-project ()
   "Step step through project spec & apply any blocks found."
   (interactive)
-  (let ((project-file (expand-file-name ".project" default-directory)))
+  (let ((project-file (expand-file-name "PROJECT.yaml" default-directory)))
     (when (file-exists-p project-file)
       (with-temp-buffer
         (insert-file-contents project-file)
         (let* ((project-resources (or (yaml-parse-string (buffer-string)
                                                          :null-object nil
-                                                         :sequence-type 'list)
-                                      (json-read-from-string (buffer-string))))
+                                                         :sequence-type 'list)))
                (project (make-declarative-project
                          :name (gethash 'project-name project-resources)
                          :root-directory (or (gethash 'root-directory project-resources)
@@ -191,7 +194,7 @@ return t, else nil."
       (message "Declarative Project Mode Enabled!")))
 
 (add-hook 'find-file-hook (lambda ()
-                            (when (string-match-p "/.project$" (buffer-file-name))
+                            (when (string-match-p "/PROJECT.yaml$" (buffer-file-name))
                               (declarative-project-mode 1))))
 (provide 'declarative-project-mode)
 ;;; declarative-project-mode.el ends here
