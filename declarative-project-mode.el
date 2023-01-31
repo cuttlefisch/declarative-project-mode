@@ -269,7 +269,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 (defun declarative-project--mode-setup ()
   "Load in cache, prune and handle agenda files."
   (message "Declarative Project Mode Enabled!")
-  (declarative-project--read-cache)
+  (setq declarative-project--cached-projects (declarative-project--read-cache))
   (when declarative-project--auto-prune-cache
     (message "WARNING :: Pruned the following projects from cache:\n%s"
              (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
@@ -290,13 +290,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
                         'declarative-project--install-project)
             map)
   (if (or declarative-project-mode global-declarative-project-mode)
-      (progn
-        (message "Declarative Project Mode Enabled!")
-        (setq declarative-project--cached-projects (declarative-project--read-cache))
-        (when declarative-project--auto-prune-cache
-          (message "WARNING :: Pruned the following projects from cache:\n%s"
-                   (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
-        (declarative-project--rebuild-org-agenda))))
+      (declarative-project--mode-setup)))
 
 (add-hook 'find-file-hook (lambda ()
                             (when (string-match-p "/PROJECT.yaml$" (buffer-file-name))
