@@ -266,6 +266,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (declarative-project--append-to-cache project-file)
     (message "...Finished Installation!")))
 
+;;;###autoload
 (define-minor-mode declarative-project-mode
   "Declarative Project mode."
   :lighter " DPM"
@@ -281,6 +282,9 @@ Any missing files will be created if declarative-project--persist-agenda-files."
           (message "WARNING :: Pruned the following projects from cache:\n%s"
                 (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
         (declarative-project--rebuild-org-agenda))))
+
+;;;###autoload
+(define-globalized-minor-mode global-declarative-project-mode declarative-project-mode declarative-project-mode :group declarative-project-mode)
 
 (add-hook 'find-file-hook (lambda ()
                             (when (string-match-p "/PROJECT.yaml$" (buffer-file-name))
