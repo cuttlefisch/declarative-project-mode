@@ -292,8 +292,5 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   (if (or declarative-project-mode global-declarative-project-mode)
       (declarative-project--mode-setup)))
 
-(add-hook 'find-file-hook (lambda ()
-                            (when (string-match-p "/PROJECT.yaml$" (buffer-file-name))
-                              (declarative-project-mode 1))))
 (provide 'declarative-project-mode)
 ;;; declarative-project-mode.el ends here
