@@ -266,6 +266,21 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (declarative-project--append-to-cache project-file)
     (message "...Finished Installation!")))
 
+(defun declarative-project--mode-setup ()
+  "Load in cache, prune and handle agenda files."
+  (message "Declarative Project Mode Enabled!")
+  (declarative-project--read-cache)
+  (when declarative-project--auto-prune-cache
+    (message "WARNING :: Pruned the following projects from cache:\n%s"
+             (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
+  (declarative-project--rebuild-org-agenda))
+
+;;;###autoload
+(define-globalized-minor-mode global-declarative-project-mode
+  declarative-project-mode
+  declarative-project--mode-setup
+  :group 'declarative-project-mode)
+
 ;;;###autoload
 (define-minor-mode declarative-project-mode
   "Declarative Project mode."
@@ -280,11 +295,8 @@ Any missing files will be created if declarative-project--persist-agenda-files."
         (setq declarative-project--cached-projects (declarative-project--read-cache))
         (when declarative-project--auto-prune-cache
           (message "WARNING :: Pruned the following projects from cache:\n%s"
-                (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
+                   (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
         (declarative-project--rebuild-org-agenda))))
-
-;;;###autoload
-(define-globalized-minor-mode global-declarative-project-mode declarative-project-mode declarative-project-mode :group declarative-project-mode)
 
 (add-hook 'find-file-hook (lambda ()
                             (when (string-match-p "/PROJECT.yaml$" (buffer-file-name))
