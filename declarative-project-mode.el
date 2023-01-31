@@ -268,7 +268,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 
 (defun declarative-project--mode-setup ()
   "Load in cache, prune and handle agenda files."
-  (when (not declarative-project-mode)
+  (when (not (or declarative-project-mode global-declarative-project-mode))
         (message "Declarative Project Mode Enabled!")
         (setq declarative-project--cached-projects (declarative-project--read-cache))
         (when declarative-project--auto-prune-cache
