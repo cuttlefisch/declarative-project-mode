@@ -274,7 +274,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
             (define-key map (kbd "C-c C-c i")
                         'declarative-project--install-project)
             map)
-  (if declarative-project-mode
+  (if (or declarative-project-mode global-declarative-project-mode)
       (progn
         (message "Declarative Project Mode Enabled!")
         (setq declarative-project--cached-projects (declarative-project--read-cache))
