@@ -277,7 +277,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   (if declarative-project-mode
       (progn
         (message "Declarative Project Mode Enabled!")
-        (declarative-project--read-cache)
+        (setq declarative-project--cached-projects (declarative-project--read-cache))
         (when declarative-project--auto-prune-cache
           (message "WARNING :: Pruned the following projects from cache:\n%s"
                 (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
