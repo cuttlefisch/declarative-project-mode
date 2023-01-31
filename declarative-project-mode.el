@@ -9,7 +9,7 @@
 ;; Version: 0.0.3
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
-;; Package-Requires: ((emacs "26.1") (treemacs "3.0"))
+;; Package-Requires: ((emacs "26.1") (treemacs "2.10"))
 ;;
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -47,7 +47,7 @@
   (deps                 '()     :type list)
   (local-files          '()     :type list)
   (symlinks             '()     :type list)
-  (agenda-file          ""      :type string)
+  (agenda-files         '()     :type list)
   (workspaces           '()     :type list))
 
 (defun declarative-project--make-declarative-project-with-defaults (&rest project-attrs)
@@ -61,14 +61,27 @@
 
 (defcustom declarative-project--clobber nil
   "When t don't prompt for confirmation when overwriting local files."
-  :type 'symbol
+  :type 'boolean
   :group 'declarative-project-mode)
+
+(defcustom declarative-project--auto-prune-cache nil
+  "When t don't prompt when removing project file paths from cache.."
+  :type 'boolean
+  :group 'declarative-project-mode)
+
+(defvar declarative-project--cache-file
+  (concat user-emacs-directory "declarative-project-cache.el")
+  "Store path to all declared projects.")
+
+(defvar declarative-project--cached-projects
+  '()
+  "List of declared projects' project specification file paths.")
 
 (defun declarative-project--check-required-resources (project)
   "Warn if any resources labeled required in PROJECT are missing."
   (when-let ((required-resources (declarative-project-required-resources project)))
     (seq-map (lambda (resource)
-               (unless (file-exists-p resource)
+       (unless (file-exists-p resource)
                  (warn (concat "Missing required resource: " resource))))
              required-resources)))
 
@@ -76,7 +89,7 @@
   "Clone any git dependencies locally in PROJECT."
   (when-let ((project-deps (declarative-project-deps project)))
     (seq-map (lambda (dep)
-               (let* ((src (gethash 'src dep))
+       (let* ((src (gethash 'src dep))
                       (dest (or (gethash 'dest dep) ""))
                       (args (or (gethash 'args dep) ""))
                       (root-dir (declarative-project-root-directory project))
@@ -98,7 +111,7 @@
     (seq-map
      (lambda (file)
        (let* ((src (expand-file-name (gethash 'src file)))
-              (root-dir (declarative-project-root-directory project))
+      (root-dir (declarative-project-root-directory project))
               (dest (or (gethash 'dest file)
                         (file-name-nondirectory src)))
               (dest-path (concat root-dir "/" dest)))
@@ -120,7 +133,7 @@
   "Create any symlinks in PROJECT struct."
   (when-let ((symlinks (declarative-project-symlinks project)))
     (seq-map (lambda (link-def)
-               (let* ((targ (expand-file-name (gethash 'targ link-def)))
+       (let* ((targ (expand-file-name (gethash 'targ link-def)))
                       (link (or (gethash 'link link-def)
                                 (file-name-nondirectory targ)))
                       (root-dir (declarative-project-root-directory project)))
@@ -135,53 +148,93 @@
   "Add project to any treemacs workspaces listed in PROJECT."
   (when-let ((workspaces (declarative-project-workspaces project)))
     (seq-map (lambda (workspace)
-               (treemacs-do-add-project-to-workspace
+       (treemacs-do-add-project-to-workspace
                 (declarative-project-root-directory project)
                 workspace))
              workspaces)
     (run-hooks 'declarative-project--apply-treemacs-workspaces-hook)))
 
 (defun declarative-project--prep-target (project)
-  "If user creates the target file, or it exists & is writable
-return t, else nil."
+  "Prepare install directory & update agenda files for PROJECT install."
   (let ((root-dir (declarative-project-root-directory project)))
-    (if (file-exists-p root-dir)
-      t
-      (if (and  (file-writable-p root-dir)
-                (or declarative-project--clobber
-                    (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir))))
-          (make-directory root-dir t)
-        (message "Installation Aborted")
-        nil))))
+    (if (not (file-exists-p root-dir))
+        (if (and  (file-writable-p root-dir)
+                  (or declarative-project--clobber
+                      (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir))))
+            (make-directory root-dir t)
+          (message "Installation Aborted")))
+    (seq-map (lambda (agenda-file)
+               (let* ((root-dir (declarative-project-root-directory project))
+                      (file-path (concat root-dir "/" agenda-file)))
+                 (unless (file-exists-p file-path)
+                   (write-region "" nil file-path))
+                 (unless (member file-path org-agenda-files)
+                   (add-to-list 'org-agenda-files file-path))))
+             (declarative-project-agenda-files project))
+    (message "Finished adding agenda files")))
 
+(defun declarative-project--read-cache ()
+  "Read project file paths from cache, and handle any change."
+  (save-excursion
+    (with-temp-buffer
+      (insert-file-contents declarative-project--cache-file)
+      (let ((raw-data (buffer-string)))
+        (if (string-empty-p raw-data)
+            '()
+          (split-string raw-data "\n" t))))))
+
+(defun declarative-project--prune-cache ()
+  "Filter missing projects from cached file paths."
+  (setq declarative-project--cached-projects
+        (cl-remove-if-not #'file-exists-p declarative-project--cached-projects))
+  (declarative-project--save-cache))
+
+(defun declarative-project--save-cache ()
+  "Save the list of cached projects to the cache file."
+  (with-temp-file declarative-project--cache-file
+    (mapc (lambda (str)
+            (insert str)
+            (newline))
+          declarative-project--cached-projects)))
+
+(defun declarative-project--append-to-cache (project-file)
+  "Append PROJECT-FILE to declared project cache file."
+  (append-to-file (format "%s\n" project-file) nil declarative-project--cache-file)
+  (add-to-list 'declarative-project--cached-projects project-file)
+  (declarative-project--save-cache))
+
+(defun declarative-project--read-project-from-file (project-file)
+  "Return the declarative-project defined in PROJECT-FILE."
+  (when (file-exists-p project-file)
+    (with-temp-buffer
+      (insert-file-contents project-file)
+      (let ((project-resources (yaml-parse-string (buffer-string)
+                                                  :null-object nil
+                                                  :sequence-type 'list)))
+        (make-declarative-project
+         :name (gethash 'project-name project-resources)
+         :root-directory (or (gethash 'root-directory project-resources)
+                             (gethash 'project-file project-resources))
+         :required-resources (gethash 'required-resources project-resources)
+         :deps (gethash 'deps project-resources)
+         :local-files (gethash 'local-files project-resources)
+         :symlinks (gethash 'symlinks project-resources)
+         :agenda-files (gethash 'agenda-files project-resources)
+         :workspaces (gethash 'workspaces project-resources))))))
 
 (defun declarative-project--install-project ()
   "Step step through project spec & apply any blocks found."
   (interactive)
-  (let ((project-file (expand-file-name "PROJECT.yaml" default-directory)))
-    (when (file-exists-p project-file)
-      (with-temp-buffer
-        (insert-file-contents project-file)
-        (let* ((project-resources (or (yaml-parse-string (buffer-string)
-                                                         :null-object nil
-                                                         :sequence-type 'list)))
-               (project (make-declarative-project
-                         :name (gethash 'project-name project-resources)
-                         :root-directory (or (gethash 'root-directory project-resources)
-                                             (gethash 'project-file project-resources))
-                         :required-resources (gethash 'required-resources project-resources)
-                         :deps (gethash 'deps project-resources)
-                         :local-files (gethash 'local-files project-resources)
-                         :symlinks (gethash 'symlinks project-resources)
-                         :agenda-file (gethash 'agenda-file project-resources)
-                         :workspaces (gethash 'workspaces project-resources))))
-          (declarative-project--prep-target project)
-          (declarative-project--check-required-resources project)
-          (declarative-project--install-project-dependencies project)
-          (declarative-project--copy-local-files project)
-          (declarative-project--create-symlinks project)
-          (declarative-project--apply-treemacs-workspaces project)
-          (message "...Finished Installation!"))))))
+  (let* ((project-file (expand-file-name "PROJECT.yaml" default-directory))
+         (project (declarative-project--read-project-from-file project-file)))
+    (declarative-project--prep-target project)
+    (declarative-project--check-required-resources project)
+    (declarative-project--install-project-dependencies project)
+    (declarative-project--copy-local-files project)
+    (declarative-project--create-symlinks project)
+    (declarative-project--apply-treemacs-workspaces project)
+    (declarative-project--append-to-cache project-file)
+    (message "...Finished Installation!")))
 
 (define-minor-mode declarative-project-mode
   "Declarative Project mode."
@@ -191,7 +244,11 @@ return t, else nil."
                         'declarative-project--install-project)
             map)
   (if declarative-project-mode
-      (message "Declarative Project Mode Enabled!")))
+      (progn
+        (message "Declarative Project Mode Enabled!")
+        (declarative-project--read-cache)
+        (when declarative-project--auto-prune-cache
+          (declarative-project--prune-cache)))))
 
 (add-hook 'find-file-hook (lambda ()
                             (when (string-match-p "/PROJECT.yaml$" (buffer-file-name))

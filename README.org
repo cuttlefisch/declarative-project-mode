@@ -9,14 +9,17 @@ installing git repositories as dependencies, and warning about missing required 
 
 To use the mode, create a file called PROJECT.yaml in the root of your project directory and
 add a Yaml object with the following properties:
-- required-resources: A list of resources that must exist for the project to be
+- ~required-resources~: A list of resources that must exist for the project to be
   considered complete.
-- deps: A list of git repositories to be cloned as dependencies.
-- local-files: A list of files to be copied from their current location to the
+- ~agenda-files~: A list of files to add to ~org-agenda-files~. As these are processed
+  *last*, installation only creates these files if they are not otherwise created. Any of
+  these already present are just added to ~org-agenda-files~.
+- ~deps~: A list of git repositories to be cloned as dependencies.
+- ~local-files~: A list of files to be copied from their current location to the
   project directory.
-- symlinks: List of link/target pairs to create as symlinks relative to the project
+- ~symlinks~: List of link/target pairs to create as symlinks relative to the project
   directory.
-- treemacs-workspaces: A list of Treemacs workspace names this project should be added to.
+- ~treemacs-workspaces~: A list of Treemacs workspace names this project should be added to.
 
 Note that any omitted ~dest~ or ~link~ field results in that resource's creation in the
 project root directory, named as the ~Filename.extension~.
@@ -25,6 +28,9 @@ This project prefers Yaml.
 #+begin_src yaml :tangle /tmp/PROJECT.yaml
 project-name: "Declarative Project Mode"
 root-dir: "/tmp/demo-project"
+agenda-files:
+  - README.org
+  - AGENDA.org
 required-resources:
   - README.org
 deps:
@@ -39,6 +45,8 @@ local-files:
     # (↑) path relative to project root dir
   - src: /path/to/src
     # (↑) default dest is project root dir
+  - src: /path/to/README.org
+    dest: README.org
 symlinks:
   - targ: /path/to/link-target
     link: path/to/symlink
@@ -74,6 +82,7 @@ conform to individual projects.
     - cloud storage backend
     - s3 backend
     - package managers
-- Improved startup/shutdown checks for workspaces
-- Destination specification to help consolidate project definitions
 - Recursive project definitions, i.e. subprojects
+- Optional param for any spec attribute
+    - specify files as optional, otherwise assume required
+    - deprecates ~required-resources~
