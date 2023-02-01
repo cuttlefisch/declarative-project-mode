@@ -277,20 +277,16 @@ Any missing files will be created if declarative-project--persist-agenda-files."
         (declarative-project--rebuild-org-agenda)))
 
 ;;;###autoload
-(define-globalized-minor-mode global-declarative-project-mode
-  declarative-project-mode
-  declarative-project--mode-setup
-  :group 'declarative-project-mode)
-
-;;;###autoload
 (define-minor-mode declarative-project-mode
   "Declarative Project mode."
   :lighter " DPM"
-  :default nil
+  :init-value nil
+  :global t
   :keymap (let ((map (make-sparse-keymap)))
             (define-key map (kbd "C-c C-c i")
                         'declarative-project--install-project)
-            map))
+            map)
+  :after-hook #'declarative-project--mode-setup)
 
 (provide 'declarative-project-mode)
 ;;; declarative-project-mode.el ends here
