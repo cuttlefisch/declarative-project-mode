@@ -164,7 +164,7 @@
                 (declarative-project-root-directory project)
                 workspace))
              workspaces)
-    (run-hooks 'declarative-project--apply-treemacs-workspaces-hook)))
+    (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)))
 
 (defun declarative-project--prep-target (project)
   "Prepare install directory & update agenda files for PROJECT install."
@@ -191,6 +191,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   (seq-map (lambda (project-file)
              (when (file-exists-p project-file)
                (let ((project (declarative-project--read-project-from-file project-file)))
+                 (declarative-project--apply-treemacs-workspaces project)
                  (seq-map (lambda (agenda-file)
                             (let* ((root-dir (declarative-project-root-directory project))
                                    (file-path (concat root-dir "/" agenda-file)))
