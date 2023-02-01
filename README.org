@@ -1,9 +1,9 @@
 * declarative-project-mode
 
-A minor mode for managing and installing a variety of project contents with a simple
+A global minor mode for managing and installing a variety of project contents with a simple
 declarative syntax in Emacs.
 
-This mode allows you to define a project as a conceptual grouping of software components,
+This global mode allows you to define a project as a conceptual grouping of software components,
 and then manage and install these components with ease. The mode currently supports
 installing git repositories as dependencies, and warning about missing required resources.
 
