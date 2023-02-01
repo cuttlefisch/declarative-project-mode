@@ -270,7 +270,6 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (declarative-project--apply-treemacs-workspaces project)
     (declarative-project--append-to-cache (declarative-project-project-file project))
     (setq declarative-project--cached-projects (declarative-project--read-cache))
-    (message "About to rebuild agenda from install")
     (declarative-project--rebuild-org-agenda)
     (message "...Finished Installation!")))
 
@@ -282,7 +281,6 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (when declarative-project--auto-prune-cache
       (message "WARNING :: Pruned the following projects from cache:\n%s"
                (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
-    (message "Rebuilding agenda from setup")
     (declarative-project--rebuild-org-agenda)))
 
 ;;;###autoload
