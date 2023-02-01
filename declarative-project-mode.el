@@ -49,6 +49,7 @@
 (cl-defstruct declarative-project
   (name                 ""      :type string)
   (root-directory       ""      :type string)
+  (project-file         ""      :type string)
   (required-resources   '()     :type list)
   (deps                 '()     :type list)
   (local-files          '()     :type list)
@@ -163,7 +164,7 @@
                 (declarative-project-root-directory project)
                 workspace))
              workspaces)
-    (run-hooks 'declarative-project--apply-treemacs-workspaces-hook)))
+    (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)))
 
 (defun declarative-project--prep-target (project)
   "Prepare install directory & update agenda files for PROJECT install."
@@ -188,17 +189,19 @@
   "Add any valid agenda files from cached projects to org-agenda-files.
 Any missing files will be created if declarative-project--persist-agenda-files."
   (seq-map (lambda (project-file)
-             (let ((project (declarative-project--read-project-from-file project-file)))
-               (seq-map (lambda (agenda-file)
-                          (let* ((root-dir (declarative-project-root-directory project))
-                                 (file-path (concat root-dir "/" agenda-file)))
-                            (unless (file-exists-p file-path)
-                              (warn "Missing declared agenda file:\t%s" file-path)
-                              (when declarative-project--persist-agenda-files
-                                (write-region "" nil file-path)))
-                            (unless (member file-path org-agenda-files)
-                              (add-to-list 'org-agenda-files file-path))))
-                        (declarative-project-agenda-files project))))
+             (when (file-exists-p project-file)
+               (let ((project (declarative-project--read-project-from-file project-file)))
+                 (declarative-project--apply-treemacs-workspaces project)
+                 (seq-map (lambda (agenda-file)
+                            (let* ((root-dir (declarative-project-root-directory project))
+                                   (file-path (concat root-dir "/" agenda-file)))
+                              (unless (file-exists-p file-path)
+                                (warn "Missing declared agenda file:\t%s" file-path)
+                                (when declarative-project--persist-agenda-files
+                                  (write-region "" nil file-path)))
+                              (unless (member file-path org-agenda-files)
+                                (add-to-list 'org-agenda-files file-path))))
+                          (declarative-project-agenda-files project)))))
            declarative-project--cached-projects))
 
 (defun declarative-project--read-cache ()
@@ -214,10 +217,10 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 (defun declarative-project--prune-cache ()
   "Filter missing projects from cached file paths."
   (let ((prev-cache declarative-project--cached-projects))
-        (setq declarative-project--cached-projects
-                (cl-remove-if-not #'file-exists-p declarative-project--cached-projects))
-        (declarative-project--save-cache)
-        (cl-set-difference prev-cache declarative-project--cached-projects)))
+    (setq declarative-project--cached-projects
+          (cl-remove-if-not #'file-exists-p declarative-project--cached-projects))
+    (declarative-project--save-cache)
+    (cl-set-difference prev-cache declarative-project--cached-projects)))
 
 (defun declarative-project--save-cache ()
   "Save the list of cached projects to the cache file."
@@ -245,6 +248,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
          :name (gethash 'project-name project-resources)
          :root-directory (or (gethash 'root-directory project-resources)
                              (gethash 'project-file project-resources))
+         :project-file project-file
          :required-resources (gethash 'required-resources project-resources)
          :deps (gethash 'deps project-resources)
          :local-files (gethash 'local-files project-resources)
@@ -256,26 +260,28 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   "Step step through project spec & apply any blocks found."
   (interactive)
   (let* ((project-file (expand-file-name "PROJECT.yaml" default-directory))
-         (project (declarative-project--read-project-from-file project-file)))
+         (project (or (declarative-project--read-project-from-file project-file)
+                      (declarative-project--read-project-from-file (expand-file-name (buffer-file-name (current-buffer)))))))
     (declarative-project--prep-target project)
     (declarative-project--check-required-resources project)
     (declarative-project--install-project-dependencies project)
     (declarative-project--copy-local-files project)
     (declarative-project--create-symlinks project)
     (declarative-project--apply-treemacs-workspaces project)
-    (declarative-project--append-to-cache project-file)
+    (declarative-project--append-to-cache (declarative-project-project-file project))
+    (setq declarative-project--cached-projects (declarative-project--read-cache))
     (declarative-project--rebuild-org-agenda)
     (message "...Finished Installation!")))
 
 (defun declarative-project--mode-setup ()
   "Load in cache, prune and handle agenda files."
   (when declarative-project-mode
-        (message "Declarative Project Mode Enabled!")
-        (setq declarative-project--cached-projects (declarative-project--read-cache))
-        (when declarative-project--auto-prune-cache
-        (message "WARNING :: Pruned the following projects from cache:\n%s"
-                (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
-        (declarative-project--rebuild-org-agenda)))
+    (message "Declarative Project Mode Enabled!")
+    (setq declarative-project--cached-projects (declarative-project--read-cache))
+    (when declarative-project--auto-prune-cache
+      (message "WARNING :: Pruned the following projects from cache:\n%s"
+               (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
+    (declarative-project--rebuild-org-agenda)))
 
 ;;;###autoload
 (define-minor-mode declarative-project-mode
