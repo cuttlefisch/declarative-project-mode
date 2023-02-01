@@ -288,7 +288,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
             (define-key map (kbd "C-c C-c i")
                         'declarative-project--install-project)
             map)
-  :after-hook #'declarative-project--mode-setup)
+  (declarative-project--mode-setup))
 
 (provide 'declarative-project-mode)
 ;;; declarative-project-mode.el ends here
