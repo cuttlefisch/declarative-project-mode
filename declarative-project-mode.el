@@ -264,11 +264,12 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (declarative-project--create-symlinks project)
     (declarative-project--apply-treemacs-workspaces project)
     (declarative-project--append-to-cache project-file)
+    (declarative-project--rebuild-org-agenda)
     (message "...Finished Installation!")))
 
 (defun declarative-project--mode-setup ()
   "Load in cache, prune and handle agenda files."
-  (when (not (or declarative-project-mode global-declarative-project-mode))
+  (when (not declarative-project-mode)
         (message "Declarative Project Mode Enabled!")
         (setq declarative-project--cached-projects (declarative-project--read-cache))
         (when declarative-project--auto-prune-cache
@@ -282,6 +283,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   :lighter " DPM"
   :init-value nil
   :global t
+  :group 'minor-modes
   :keymap (let ((map (make-sparse-keymap)))
             (define-key map (kbd "C-c C-c i")
                         'declarative-project--install-project)
