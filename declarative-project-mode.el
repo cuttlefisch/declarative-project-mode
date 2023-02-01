@@ -269,7 +269,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 
 (defun declarative-project--mode-setup ()
   "Load in cache, prune and handle agenda files."
-  (when (not declarative-project-mode)
+  (when declarative-project-mode
         (message "Declarative Project Mode Enabled!")
         (setq declarative-project--cached-projects (declarative-project--read-cache))
         (when declarative-project--auto-prune-cache
@@ -280,8 +280,8 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 ;;;###autoload
 (define-minor-mode declarative-project-mode
   "Declarative Project mode."
+  nil
   :lighter " DPM"
-  :init-value nil
   :global t
   :group 'minor-modes
   :keymap (let ((map (make-sparse-keymap)))
