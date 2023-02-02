@@ -191,7 +191,6 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   (seq-map (lambda (project-file)
              (when (file-exists-p project-file)
                (let ((project (declarative-project--read-project-from-file project-file)))
-                 (declarative-project--apply-treemacs-workspaces project)
                  (seq-map (lambda (agenda-file)
                             (let* ((root-dir (declarative-project-root-directory project))
                                    (file-path (concat root-dir "/" agenda-file)))
@@ -208,6 +207,8 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   "Read project file paths from cache, and handle any change."
   (save-excursion
     (with-temp-buffer
+      (unless (file-exists-p declarative-project--cache-file)
+        (declarative-project--save-cache))
       (insert-file-contents declarative-project--cache-file)
       (let ((raw-data (buffer-string)))
         (if (string-empty-p raw-data)
@@ -245,7 +246,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
                                                   :null-object nil
                                                   :sequence-type 'list)))
         (make-declarative-project
-         :name (gethash 'project-name project-resources)
+         :name (gethash 'name project-resources)
          :root-directory (or (gethash 'root-directory project-resources)
                              (gethash 'project-file project-resources))
          :project-file project-file
@@ -271,6 +272,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (declarative-project--append-to-cache (declarative-project-project-file project))
     (setq declarative-project--cached-projects (declarative-project--read-cache))
     (declarative-project--rebuild-org-agenda)
+        (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)
     (message "...Finished Installation!")))
 
 (defun declarative-project--mode-setup ()
