@@ -257,10 +257,10 @@ Any missing files will be created if declarative-project--persist-agenda-files."
          :agenda-files (gethash 'agenda-files project-resources)
          :workspaces (gethash 'workspaces project-resources))))))
 
-(defun declarative-project--install-project ()
+(defun declarative-project--install-project (&optional project-file)
   "Step step through project spec & apply any blocks found."
   (interactive)
-  (let* ((project-file (expand-file-name "PROJECT.yaml" default-directory))
+  (let* ((project-file (or project-file (expand-file-name "PROJECT.yaml" default-directory)))
          (project (or (declarative-project--read-project-from-file project-file)
                       (declarative-project--read-project-from-file (expand-file-name (buffer-file-name (current-buffer)))))))
     (declarative-project--prep-target project)
