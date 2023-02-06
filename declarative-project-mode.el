@@ -105,7 +105,7 @@
 
 (defun declarative-project--repo-data (repository-full-name)
   "Return repository information from the github API for REPOSITORY-FULL-NAME."
-  (ghub-get (format "repos/%s" repository-full-name)))
+  (ghub-get (format "repos/%s" repository-full-name)) nil :auth 'dpm)
 
 (defun declarative-project--repo-extract-fields (repo-data fields)
   "Return specific fields from REPO-DATA."
@@ -131,14 +131,12 @@
                       (dest-path (concat root-dir "/" dest)))
                  ;; Clone any git dependency unless destination already
                  ;; exists.
-                 (cond
-                  ((and (file-exists-p dest-path) (not declarative-project--clobber))
-                   (warn "Desintation already exists:\t%s" dest-path))
-                  (t
-                   (save-excursion
-                     (let ((magit-clone-set-remote.pushDefault  t))
-                       (magit-clone-regular src dest-path nil)))))))
-             project-deps)))
+                 ;; (if (and (file-exists-p dest-path) (not declarative-project--clobber))
+                 ;;     (warn "Desintation already exists:\t%s" dest-path)
+                   (progn
+                     (let ((magit-clone-set-remote.pushDefault t))
+                       (magit-clone-regular src dest-path nil)))))
+    project-deps)))
 
 (defun declarative-project--copy-local-files (project)
   "Copy over any local files in PROJECT."
