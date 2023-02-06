@@ -9,7 +9,12 @@
 ;; Version: 0.0.4
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
-;; Package-Requires: ((emacs "26.1") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
+;; Package-Requires: ((emacs "25.1")
+;; (treemacs "2.10")
+;; (yaml-mode "0.0.15")
+;; (yaml "0.5.1")
+;; (magit "3.3.0")
+;; (ghub "3.5.1"))
 ;;
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -89,6 +94,10 @@
   '()
   "List of declared projects' project specification file paths.")
 
+(defvar declarative-project--github-url-regex-groups
+  "\\(?:git@\\|https://\\)github.com/\\(.*\\)\\(.git\\)?"
+  "Regular expression to extract github username/repository-name from a github url.")
+
 (defun declarative-project--check-required-resources (project)
   "Warn if any resources labeled required in PROJECT are missing."
   (when-let ((required-resources (declarative-project-required-resources project)))
@@ -97,12 +106,29 @@
                  (warn (concat "Missing required resource: " resource))))
              required-resources)))
 
+(defun declarative-project--repo-data (repository-full-name)
+  "Return repository information from the github API for REPOSITORY-FULL-NAME."
+  (ghub-get (format "repos/%s" repository-full-name)))
+
+(defun declarative-project--repo-extract-fields (repo-data fields)
+  "Return specific fields from REPO-DATA."
+  (seq-filter (lambda (field) (member (car field) fields))
+              repo-data))
+
+(defun declarative-project--repo-data-from-url (repo-url)
+  "Return best guess at project name from REPO-URL and return repo data."
+  (when (string-match declarative-project--github-url-regex-groups repo-url)
+    (let ((repo-name (match-string 1 repo-url)))
+      (declarative-project--repo-data repo-name))))
+
 (defun declarative-project--install-project-dependencies (project)
   "Clone any git dependencies locally in PROJECT."
   (when-let ((project-deps (declarative-project-deps project)))
     (seq-map (lambda (dep)
                (let* ((src (gethash 'src dep))
-                      (dest (or (gethash 'dest dep) ""))
+                      (repo-name (cl-find (lambda (elt) (string-equal "name" (car elt)))
+                                          (declarative-project--repo-data-from-url src)))
+                      (dest (or (gethash 'dest dep) repo-name))
                       (args (or (gethash 'args dep) ""))
                       (root-dir (declarative-project-root-directory project))
                       (dest-path (concat root-dir "/" dest)))
@@ -112,9 +138,9 @@
                   ((and (file-exists-p dest-path) (not declarative-project--clobber))
                    (warn "Desintation already exists:\t%s" dest-path))
                   (t
-                   (shell-command (concat "git clone " src
-                                          " " (concat root-dir "/" dest)
-                                          " " args))))))
+                   (save-excursion
+                     (let ((magit-clone-set-remote.pushDefault  t))
+                       (magit-clone-regular src dest-path nil)))))))
              project-deps)))
 
 (defun declarative-project--copy-local-files (project)
@@ -272,7 +298,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (declarative-project--append-to-cache (declarative-project-project-file project))
     (setq declarative-project--cached-projects (declarative-project--read-cache))
     (declarative-project--rebuild-org-agenda)
-        (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)
+    (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)
     (message "...Finished Installation!")))
 
 (defun declarative-project--mode-setup ()
@@ -288,7 +314,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 ;;;###autoload
 (define-minor-mode declarative-project-mode
   "Declarative Project mode."
-  nil
+  :init-value nil
   :lighter " DPM"
   :global t
   :group 'minor-modes
