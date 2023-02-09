@@ -9,7 +9,7 @@
 ;; Version: 0.0.4
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
-;; Package-Requires: ((emacs "25.1") (ghub "3.5.1") (magit "3.3.0") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
+;; Package-Requires: ((emacs "25.1") (ghub "3.5.1") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
 ;;
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -43,7 +43,7 @@
 ;;
 ;;; Code:
 (require 'ghub)
-(require 'magit)
+(require 'vc)
 (require 'treemacs)
 (require 'yaml)
 (require 'yaml-mode)
@@ -114,29 +114,40 @@
 
 (defun declarative-project--repo-data-from-url (repo-url)
   "Return best guess at project name from REPO-URL and return repo data."
+  (message "i got this repo-url:\t%s" repo-url)
+  (let ((reb-re-syntax 'string))
   (when (string-match declarative-project--github-url-regex-groups repo-url)
+    (message "we got a string match")
     (let ((repo-name (match-string 1 repo-url)))
-      (declarative-project--repo-data repo-name))))
+      (message" inside repo-date-from-url" )
+      (message "repo-name from url:\t%s" repo-name)
+      (declarative-project--repo-data repo-name)))))
 
 (defun declarative-project--install-project-dependencies (project)
   "Clone any git dependencies locally in PROJECT."
+    (save-excursion
   (when-let ((project-deps (declarative-project-deps project)))
-    (seq-map (lambda (dep)
-               (let* ((src (gethash 'src dep))
-                      (repo-name (cl-find (lambda (elt) (string-equal "name" (car elt)))
-                                          (declarative-project--repo-data-from-url src)))
-                      (dest (or (gethash 'dest dep) repo-name))
-                      (args (or (gethash 'args dep) ""))
-                      (root-dir (declarative-project-root-directory project))
-                      (dest-path (concat root-dir "/" dest)))
-                 ;; Clone any git dependency unless destination already
-                 ;; exists.
-                 ;; (if (and (file-exists-p dest-path) (not declarative-project--clobber))
-                 ;;     (warn "Desintation already exists:\t%s" dest-path)
-                   (progn
-                     (let ((magit-clone-set-remote.pushDefault t))
-                       (magit-clone-regular src dest-path nil)))))
-    project-deps)))
+    (message "Processing deps:\n%s" project-deps)
+      (seq-map (lambda (dep)
+                 (let* ((src (gethash 'src dep))
+                        (repo-name (declarative-project--repo-data-from-url src))
+                        (dest (or (gethash 'dest dep) repo-name))
+                        (args (or (gethash 'args dep) ""))
+                        (root-dir (declarative-project-root-directory project))
+                        (dest-path (concat root-dir "/" dest)))
+                   ;; Clone any git dependency unless destination already
+                   ;; exists.
+                   (message "repo-name:\t%s" repo-name)
+                   (message "Dest:\t%s" dest)
+                   (message "Dest-path:\t%s" dest-path)
+                   (if (and (file-exists-p dest-path) (not declarative-project--clobber))
+                       (warn "Desintation already exists:\t%s" dest-path)
+                     (progn
+                       (message "I guess we're cloning now")
+                       (message "src:\t%s" src)
+                       (message "dest-path:\t%s" dest-path)
+                       (vc-clone src 'Git dest-path)))))
+               project-deps))))
 
 (defun declarative-project--copy-local-files (project)
   "Copy over any local files in PROJECT."
@@ -313,10 +324,6 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   :lighter " DPM"
   :global t
   :group 'minor-modes
-  :keymap (let ((map (make-sparse-keymap)))
-            (define-key map (kbd "C-c C-c i")
-                        'declarative-project--install-project)
-            map)
   (declarative-project--mode-setup))
 
 (provide 'declarative-project-mode)
