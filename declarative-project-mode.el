@@ -92,7 +92,7 @@
   "List of declared projects' project specification file paths.")
 
 (defvar declarative-project--github-url-regex-groups
-  "\\(?:git@\\|https://\\)github.com/\\(.*\\)\\(.git\\)?"
+  "\\(https://\\|git@\\)[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]+[:\\/]\\([a-zA-Z0-9_-]+\\/[a-zA-Z0-9_-]+\\)\\(.git\\)?"
   "Regular expression to extract github username/repository-name from a github url.")
 
 (defun declarative-project--check-required-resources (project)
@@ -105,47 +105,43 @@
 
 (defun declarative-project--repo-data (repository-full-name)
   "Return repository information from the github API for REPOSITORY-FULL-NAME."
-  (ghub-get (format "repos/%s" repository-full-name)) nil :auth 'dpm)
+  (let ((query (format "repos/%s" repository-full-name)))
+        (ghub-get query nil :auth 'dpm)))
 
-(defun declarative-project--repo-extract-fields (repo-data fields)
-  "Return specific fields from REPO-DATA."
-  (seq-filter (lambda (field) (member (car field) fields))
-              repo-data))
+;; Use alist-get
+;; (defun declarative-project--repo-extract-fields (repo-data fields)
+;;   "Return specific fields from REPO-DATA."
+;;   (seq-filter (lambda (field) (member (car field) fields))
+;;               repo-data))
 
 (defun declarative-project--repo-data-from-url (repo-url)
   "Return best guess at project name from REPO-URL and return repo data."
-  (message "i got this repo-url:\t%s" repo-url)
   (let ((reb-re-syntax 'string))
   (when (string-match declarative-project--github-url-regex-groups repo-url)
-    (message "we got a string match")
-    (let ((repo-name (match-string 1 repo-url)))
-      (message" inside repo-date-from-url" )
-      (message "repo-name from url:\t%s" repo-name)
+    ;; Capture groups:
+    ;; 0          1               2                                               3
+    ;; git@       github.com:     cuttlefisch/treemacs-declarative-project-mode   .git
+    ;; https://   github.com/     cuttlefisch/prototype-emacs-devcontainer        .git
+    (let ((repo-name (match-string 2 repo-url)))
       (declarative-project--repo-data repo-name)))))
 
 (defun declarative-project--install-project-dependencies (project)
   "Clone any git dependencies locally in PROJECT."
     (save-excursion
   (when-let ((project-deps (declarative-project-deps project)))
-    (message "Processing deps:\n%s" project-deps)
       (seq-map (lambda (dep)
                  (let* ((src (gethash 'src dep))
-                        (repo-name (declarative-project--repo-data-from-url src))
+                        (repo-name (alist-get 'name
+                                              (declarative-project--repo-data-from-url src)))
                         (dest (or (gethash 'dest dep) repo-name))
                         (args (or (gethash 'args dep) ""))
                         (root-dir (declarative-project-root-directory project))
                         (dest-path (concat root-dir "/" dest)))
                    ;; Clone any git dependency unless destination already
                    ;; exists.
-                   (message "repo-name:\t%s" repo-name)
-                   (message "Dest:\t%s" dest)
-                   (message "Dest-path:\t%s" dest-path)
                    (if (and (file-exists-p dest-path) (not declarative-project--clobber))
                        (warn "Desintation already exists:\t%s" dest-path)
                      (progn
-                       (message "I guess we're cloning now")
-                       (message "src:\t%s" src)
-                       (message "dest-path:\t%s" dest-path)
                        (vc-clone src 'Git dest-path)))))
                project-deps))))
 
@@ -206,7 +202,7 @@
                   (or declarative-project--clobber
                       (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir))))
             (make-directory root-dir t)
-          (message "Installation Aborted")))
+          (warn "Installation Aborted")))
     (seq-map (lambda (agenda-file)
                (let* ((root-dir (declarative-project-root-directory project))
                       (file-path (concat root-dir "/" agenda-file)))
@@ -313,7 +309,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (message "Declarative Project Mode Enabled!")
     (setq declarative-project--cached-projects (declarative-project--read-cache))
     (when declarative-project--auto-prune-cache
-      (message "WARNING :: Pruned the following projects from cache:\n%s"
+      (warn "WARNING :: Pruned the following projects from cache:\n%s"
                (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
     (declarative-project--rebuild-org-agenda)))
 
