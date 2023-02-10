@@ -5,11 +5,11 @@
 ;; Author: Hayden Stanko <hayden@cuttle.codes>
 ;; Maintainer: Hayden Stanko <hayden@cuttle.codes>
 ;; Created: January 13, 2023
-;; Modified: January 30, 2023
-;; Version: 0.0.4
+;; Modified: February 09, 2023
+;; Version: 0.0.5
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
-;; Package-Requires: ((emacs "25.1") (ghub "3.5.1") (magit "3.3.0") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
+;; Package-Requires: ((emacs "25.1") (ghub "3.5.1") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
 ;;
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -38,12 +38,9 @@
 ;; agenda files by enabling declarative-project--auto-prune-cache and
 ;; declarative-project--persist-agenda-files respectively.
 ;;
-;; Keybindings: - `C-c C-c i`: Run the install-project command when visiting
-;; PROJECT.yaml file
-;;
 ;;; Code:
 (require 'ghub)
-(require 'magit)
+(require 'vc)
 (require 'treemacs)
 (require 'yaml)
 (require 'yaml-mode)
@@ -92,7 +89,7 @@
   "List of declared projects' project specification file paths.")
 
 (defvar declarative-project--github-url-regex-groups
-  "\\(?:git@\\|https://\\)github.com/\\(.*\\)\\(.git\\)?"
+  "\\(https://\\|git@\\)[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]+[:\\/]\\([a-zA-Z0-9_-]+\\/[a-zA-Z0-9_-]+\\)\\(.git\\)?"
   "Regular expression to extract github username/repository-name from a github url.")
 
 (defun declarative-project--check-required-resources (project)
@@ -105,38 +102,38 @@
 
 (defun declarative-project--repo-data (repository-full-name)
   "Return repository information from the github API for REPOSITORY-FULL-NAME."
-  (ghub-get (format "repos/%s" repository-full-name)) nil :auth 'dpm)
-
-(defun declarative-project--repo-extract-fields (repo-data fields)
-  "Return specific fields from REPO-DATA."
-  (seq-filter (lambda (field) (member (car field) fields))
-              repo-data))
+  (let ((query (format "repos/%s" repository-full-name)))
+        (ghub-get query nil :auth 'dpm)))
 
 (defun declarative-project--repo-data-from-url (repo-url)
   "Return best guess at project name from REPO-URL and return repo data."
+  (let ((reb-re-syntax 'string))
   (when (string-match declarative-project--github-url-regex-groups repo-url)
-    (let ((repo-name (match-string 1 repo-url)))
-      (declarative-project--repo-data repo-name))))
+    ;; Capture groups:
+    ;; 0          1               2                                               3
+    ;; git@       github.com:     cuttlefisch/treemacs-declarative-project-mode   .git
+    ;; https://   github.com/     cuttlefisch/prototype-emacs-devcontainer        .git
+    (let ((repo-name (match-string 2 repo-url)))
+      (declarative-project--repo-data repo-name)))))
 
 (defun declarative-project--install-project-dependencies (project)
   "Clone any git dependencies locally in PROJECT."
+    (save-excursion
   (when-let ((project-deps (declarative-project-deps project)))
-    (seq-map (lambda (dep)
-               (let* ((src (gethash 'src dep))
-                      (repo-name (cl-find (lambda (elt) (string-equal "name" (car elt)))
-                                          (declarative-project--repo-data-from-url src)))
-                      (dest (or (gethash 'dest dep) repo-name))
-                      (args (or (gethash 'args dep) ""))
-                      (root-dir (declarative-project-root-directory project))
-                      (dest-path (concat root-dir "/" dest)))
-                 ;; Clone any git dependency unless destination already
-                 ;; exists.
-                 ;; (if (and (file-exists-p dest-path) (not declarative-project--clobber))
-                 ;;     (warn "Desintation already exists:\t%s" dest-path)
-                   (progn
-                     (let ((magit-clone-set-remote.pushDefault t))
-                       (magit-clone-regular src dest-path nil)))))
-    project-deps)))
+      (seq-map (lambda (dep)
+                 (let* ((src (gethash 'src dep))
+                        (repo-name (alist-get 'name
+                                              (declarative-project--repo-data-from-url src)))
+                        (dest (or (gethash 'dest dep) repo-name))
+                        (args (or (gethash 'args dep) ""))
+                        (root-dir (declarative-project-root-directory project))
+                        (dest-path (concat root-dir "/" dest)))
+                   ;; Clone any git dependency unless destination already exists.
+                   (if (and (file-exists-p dest-path) (not declarative-project--clobber))
+                       (warn "Desintation already exists:\t%s" dest-path)
+                     (progn
+                       (vc-clone src 'Git dest-path)))))
+               project-deps))))
 
 (defun declarative-project--copy-local-files (project)
   "Copy over any local files in PROJECT."
@@ -195,7 +192,7 @@
                   (or declarative-project--clobber
                       (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir))))
             (make-directory root-dir t)
-          (message "Installation Aborted")))
+          (warn "Installation Aborted")))
     (seq-map (lambda (agenda-file)
                (let* ((root-dir (declarative-project-root-directory project))
                       (file-path (concat root-dir "/" agenda-file)))
@@ -302,7 +299,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (message "Declarative Project Mode Enabled!")
     (setq declarative-project--cached-projects (declarative-project--read-cache))
     (when declarative-project--auto-prune-cache
-      (message "WARNING :: Pruned the following projects from cache:\n%s"
+      (warn "WARNING :: Pruned the following projects from cache:\n%s"
                (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
     (declarative-project--rebuild-org-agenda)))
 
@@ -313,10 +310,6 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   :lighter " DPM"
   :global t
   :group 'minor-modes
-  :keymap (let ((map (make-sparse-keymap)))
-            (define-key map (kbd "C-c C-c i")
-                        'declarative-project--install-project)
-            map)
   (declarative-project--mode-setup))
 
 (provide 'declarative-project-mode)
