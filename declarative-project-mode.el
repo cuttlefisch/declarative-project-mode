@@ -5,8 +5,8 @@
 ;; Author: Hayden Stanko <hayden@cuttle.codes>
 ;; Maintainer: Hayden Stanko <hayden@cuttle.codes>
 ;; Created: January 13, 2023
-;; Modified: January 30, 2023
-;; Version: 0.0.4
+;; Modified: February 09, 2023
+;; Version: 0.0.5
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
 ;; Package-Requires: ((emacs "25.1") (ghub "3.5.1") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
@@ -37,9 +37,6 @@
 ;; automatically prune missing projects from the cache, and create missing
 ;; agenda files by enabling declarative-project--auto-prune-cache and
 ;; declarative-project--persist-agenda-files respectively.
-;;
-;; Keybindings: - `C-c C-c i`: Run the install-project command when visiting
-;; PROJECT.yaml file
 ;;
 ;;; Code:
 (require 'ghub)
@@ -108,12 +105,6 @@
   (let ((query (format "repos/%s" repository-full-name)))
         (ghub-get query nil :auth 'dpm)))
 
-;; Use alist-get
-;; (defun declarative-project--repo-extract-fields (repo-data fields)
-;;   "Return specific fields from REPO-DATA."
-;;   (seq-filter (lambda (field) (member (car field) fields))
-;;               repo-data))
-
 (defun declarative-project--repo-data-from-url (repo-url)
   "Return best guess at project name from REPO-URL and return repo data."
   (let ((reb-re-syntax 'string))
@@ -137,8 +128,7 @@
                         (args (or (gethash 'args dep) ""))
                         (root-dir (declarative-project-root-directory project))
                         (dest-path (concat root-dir "/" dest)))
-                   ;; Clone any git dependency unless destination already
-                   ;; exists.
+                   ;; Clone any git dependency unless destination already exists.
                    (if (and (file-exists-p dest-path) (not declarative-project--clobber))
                        (warn "Desintation already exists:\t%s" dest-path)
                      (progn
