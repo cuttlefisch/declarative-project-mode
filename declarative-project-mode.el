@@ -44,6 +44,8 @@
 (require 'treemacs)
 (require 'yaml)
 (require 'yaml-mode)
+(require 'ob)
+(require 'ob-eval)
 
 (cl-defstruct declarative-project
   (name                 ""      :type string)
@@ -92,6 +94,22 @@
   "\\(https://\\|git@\\)[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]+[:\\/]\\([a-zA-Z0-9_-]+\\/[a-zA-Z0-9_-]+\\)\\(.git\\)?"
   "Regular expression to extract github username/repository-name from a github url.")
 
+(defvar declarative-project-font-lock-keywords
+  `(,@yaml-font-lock-keywords)
+  "Match yaml font-lock keywords.")
+
+(defun org-babel-execute:declarative-project (body params)
+  "Execute command with Body and PARAMS from src block."
+  (let ((project-file (or (cdr (assoc :file params))
+                          (cdr (assoc :tangle params))
+                          (buffer-file-name))))
+    (with-temp-file (org-babel-temp-file "project-")
+      (insert body)
+      (let ((project (declarative-project--read-project-from-buffer)))
+        (setf (declarative-project-project-file project) project-file)
+        (message "got this project to install:\n%s" project)
+        (declarative-project--install-project project)))))
+
 (defun declarative-project--check-required-resources (project)
   "Warn if any resources labeled required in PROJECT are missing."
   (when-let ((required-resources (declarative-project-required-resources project)))
@@ -103,7 +121,7 @@
 (defun declarative-project--repo-data (repository-full-name)
   "Return repository information from the github API for REPOSITORY-FULL-NAME."
   (let ((query (format "repos/%s" repository-full-name)))
-        (ghub-get query nil :auth 'dpm)))
+        (ghub-get query nil :auth 'dpm :noerror t)))
 
 (defun declarative-project--repo-data-from-url (repo-url)
   "Return best guess at project name from REPO-URL and return repo data."
@@ -114,7 +132,8 @@
     ;; git@       github.com:     cuttlefisch/treemacs-declarative-project-mode   .git
     ;; https://   github.com/     cuttlefisch/prototype-emacs-devcontainer        .git
     (let ((repo-name (match-string 2 repo-url)))
-      (declarative-project--repo-data repo-name)))))
+      (or (declarative-project--repo-data repo-name)
+          `((name . ,repo-name)))))))
 
 (defun declarative-project--install-project-dependencies (project)
   "Clone any git dependencies locally in PROJECT."
@@ -135,6 +154,12 @@
                        (vc-clone src 'Git dest-path)))))
                project-deps))))
 
+;; TODO this fails if you try
+;; local-files:
+;;   - src: README.org
+;;     dest: README.org
+;; required-resources:
+;;   - README.org
 (defun declarative-project--copy-local-files (project)
   "Copy over any local files in PROJECT."
   (when-let ((local-files (declarative-project-local-files project)))
@@ -145,6 +170,7 @@
               (dest (or (gethash 'dest file)
                         (file-name-nondirectory src)))
               (dest-path (concat root-dir "/" dest)))
+         (message "root-dir\t")
          (cond
           ((file-directory-p src)
            (unless (file-directory-p dest-path)
@@ -188,7 +214,7 @@
   "Prepare install directory & update agenda files for PROJECT install."
   (let ((root-dir (declarative-project-root-directory project)))
     (if (not (file-exists-p root-dir))
-        (if (and  (file-writable-p root-dir)
+        (if (and  (or  (file-writable-p root-dir) (file-writable-p (file-name-parent-directory root-dir)))
                   (or declarative-project--clobber
                       (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir))))
             (make-directory root-dir t)
@@ -209,16 +235,17 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   (seq-map (lambda (project-file)
              (when (file-exists-p project-file)
                (let ((project (declarative-project--read-project-from-file project-file)))
-                 (seq-map (lambda (agenda-file)
-                            (let* ((root-dir (declarative-project-root-directory project))
-                                   (file-path (concat root-dir "/" agenda-file)))
-                              (unless (file-exists-p file-path)
-                                (warn "Missing declared agenda file:\t%s" file-path)
-                                (when declarative-project--persist-agenda-files
-                                  (write-region "" nil file-path)))
-                              (unless (member file-path org-agenda-files)
-                                (add-to-list 'org-agenda-files file-path))))
-                          (declarative-project-agenda-files project)))))
+                 (when (declarative-project-p project)
+                   (seq-map (lambda (agenda-file)
+                              (let* ((root-dir (declarative-project-root-directory project))
+                                     (file-path (concat root-dir "/" agenda-file)))
+                                (unless (file-exists-p file-path)
+                                  (warn "Missing declared agenda file:\t%s" file-path)
+                                  (when declarative-project--persist-agenda-files
+                                    (write-region "" nil file-path)))
+                                (unless (member file-path org-agenda-files)
+                                  (add-to-list 'org-agenda-files file-path))))
+                            (declarative-project-agenda-files project))))))
            declarative-project--cached-projects))
 
 (defun declarative-project--read-cache ()
@@ -255,39 +282,45 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   (add-to-list 'declarative-project--cached-projects project-file)
   (declarative-project--save-cache))
 
+(defun declarative-project--read-project-from-buffer (&optional buffername)
+  "Return declarative-project defined by current buffer or BUFFERNAME."
+  (with-current-buffer (or buffername (current-buffer))
+    (let ((project-resources (yaml-parse-string (buffer-string)
+                                                :null-object nil
+                                                :sequence-type 'list)))
+      (make-declarative-project
+       :name (gethash 'name project-resources)
+       :root-directory (or (gethash 'root-directory project-resources)
+                           (gethash 'project-file project-resources))
+       :required-resources (gethash 'required-resources project-resources)
+       :deps (gethash 'deps project-resources)
+       :local-files (gethash 'local-files project-resources)
+       :symlinks (gethash 'symlinks project-resources)
+       :agenda-files (gethash 'agenda-files project-resources)
+       :workspaces (gethash 'workspaces project-resources)))))
+
 (defun declarative-project--read-project-from-file (project-file)
   "Return the declarative-project defined in PROJECT-FILE."
   (when (file-exists-p project-file)
     (with-temp-buffer
       (insert-file-contents project-file)
-      (let ((project-resources (yaml-parse-string (buffer-string)
-                                                  :null-object nil
-                                                  :sequence-type 'list)))
-        (make-declarative-project
-         :name (gethash 'name project-resources)
-         :root-directory (or (gethash 'root-directory project-resources)
-                             (gethash 'project-file project-resources))
-         :project-file project-file
-         :required-resources (gethash 'required-resources project-resources)
-         :deps (gethash 'deps project-resources)
-         :local-files (gethash 'local-files project-resources)
-         :symlinks (gethash 'symlinks project-resources)
-         :agenda-files (gethash 'agenda-files project-resources)
-         :workspaces (gethash 'workspaces project-resources))))))
+      (let ((project (declarative-project--read-project-from-buffer)))
+        (setf (declarative-project-project-file project) project-file)))))
 
-(defun declarative-project--install-project (&optional project-file)
+(defun declarative-project--install-project (&optional project project-file)
   "Step step through project spec & apply any blocks found."
   (interactive)
   (let* ((project-file (or project-file (expand-file-name "PROJECT.yaml" default-directory)))
-         (project (or (declarative-project--read-project-from-file project-file)
+         (project (or project
+                      (declarative-project--read-project-from-file project-file)
                       (declarative-project--read-project-from-file (expand-file-name (buffer-file-name (current-buffer)))))))
     (declarative-project--prep-target project)
-    (declarative-project--check-required-resources project)
     (declarative-project--install-project-dependencies project)
     (declarative-project--copy-local-files project)
     (declarative-project--create-symlinks project)
     (declarative-project--apply-treemacs-workspaces project)
     (declarative-project--append-to-cache (declarative-project-project-file project))
+    (declarative-project--check-required-resources project)
     (setq declarative-project--cached-projects (declarative-project--read-cache))
     (declarative-project--rebuild-org-agenda)
     (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)
@@ -297,14 +330,15 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   "Load in cache, prune and handle agenda files."
   (when declarative-project-mode
     (message "Declarative Project Mode Enabled!")
+    (yaml-mode)
     (setq declarative-project--cached-projects (declarative-project--read-cache))
     (when declarative-project--auto-prune-cache
       (warn "WARNING :: Pruned the following projects from cache:\n%s"
-               (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
+            (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
     (declarative-project--rebuild-org-agenda)))
 
 ;;;###autoload
-(define-minor-mode declarative-project-mode
+(define-derived-mode declarative-project-mode yaml-mode
   "Declarative Project mode."
   :init-value nil
   :lighter " DPM"
