@@ -73,11 +73,14 @@ files. Any of them found are added to ~org-agenda-files~, and if
 This allows users to specify any relevant agenda files as they define projects, and keep
 this list current without additional overhead.
 
+** Org-Babel Support
+Install a project via org-babel by setting the src-block language to
+~declarative-project~, and hitting ~Enter~ in the yaml block.
+
 ** Treemacs Workspace Assignment
 Provided a list of treemacs workspaces, the installation process assigns this project to
 each specified worksace. This should help decentralize workspace configuration, helping
 construct conceptual groupings of projects regardless of their location in the filesystem.
-
 ** Locally Copy or Symlink Resources
 It's often useful to maintain documentation in a form of knowlegebase such as Org Roam.
 This approach allows us to maintain a declarative set of symlinks to connect a project to
