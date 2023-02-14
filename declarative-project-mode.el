@@ -91,7 +91,7 @@
   "List of declared projects' project specification file paths.")
 
 (defvar declarative-project--github-url-regex-groups
-  "\\(https://\\|git@\\)[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]+[:\\/]\\([a-zA-Z0-9_-]+\\/[a-zA-Z0-9_-]+\\)\\(.git\\)?"
+  "\\(https://\\|git@\\)[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]+[:\\/]\\([a-zA-Z0-9_-]+\\/\\)*\\([a-zA-Z0-9_-]+\\)\\(.git\\)?"
   "Regular expression to extract github username/repository-name from a github url.")
 
 (defvar declarative-project-font-lock-keywords
@@ -121,29 +121,33 @@
 (defun declarative-project--repo-data (repository-full-name)
   "Return repository information from the github API for REPOSITORY-FULL-NAME."
   (let ((query (format "repos/%s" repository-full-name)))
-        (ghub-get query nil :auth 'dpm :noerror t)))
+    (ghub-get query nil :auth 'dpm :noerror t)))
 
 (defun declarative-project--repo-data-from-url (repo-url)
   "Return best guess at project name from REPO-URL and return repo data."
   (let ((reb-re-syntax 'string))
-  (when (string-match declarative-project--github-url-regex-groups repo-url)
-    ;; Capture groups:
-    ;; 0          1               2                                               3
-    ;; git@       github.com:     cuttlefisch/treemacs-declarative-project-mode   .git
-    ;; https://   github.com/     cuttlefisch/prototype-emacs-devcontainer        .git
-    (let ((repo-name (match-string 2 repo-url)))
-      (or (declarative-project--repo-data repo-name)
-          `((name . ,repo-name)))))))
+    (when (string-match declarative-project--github-url-regex-groups repo-url)
+      ;; Capture groups:
+      ;; TODO these are wrong now for gitlab long paths, and the comment is too wide
+      ;; 0          1               2             3                                   4
+      ;; git@       github.com:     cuttlefisch/  treemacs-declarative-project-mode   .git
+      ;; https://   github.com/     cuttlefisch/  prototype-emacs-devcontainer        .git
+      (let ((repo-name (match-string 3 repo-url)))
+        (warn "got repo data:\t%s" repo-name)
+        ;; TODO this relies on :noerror flag from ghub
+        (or (declarative-project--repo-data repo-name)
+            `((name . ,repo-name)))))))
+
 
 (defun declarative-project--install-project-dependencies (project)
   "Clone any git dependencies locally in PROJECT."
-    (save-excursion
-  (when-let ((project-deps (declarative-project-deps project)))
+  (save-excursion
+    (when-let ((project-deps (declarative-project-deps project)))
       (seq-map (lambda (dep)
                  (let* ((src (gethash 'src dep))
                         (repo-name (alist-get 'name
                                               (declarative-project--repo-data-from-url src)))
-                        (dest (or (gethash 'dest dep) repo-name))
+                        (dest (or (gethash 'dest dep) repo-name ))
                         (args (or (gethash 'args dep) ""))
                         (root-dir (declarative-project-root-directory project))
                         (dest-path (concat root-dir "/" dest)))
@@ -151,7 +155,9 @@
                    (if (and (file-exists-p dest-path) (not declarative-project--clobber))
                        (warn "Desintation already exists:\t%s" dest-path)
                      (progn
-                       (vc-clone src 'Git dest-path)))))
+                       (warn "Cloning:\t%s" src)
+                       (warn "To:\t%s" dest-path)
+                       (vc-clone src 'Git (expand-file-name dest-path))))))
                project-deps))))
 
 ;; TODO this fails if you try
