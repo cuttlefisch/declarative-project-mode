@@ -100,14 +100,24 @@
 
 (defun org-babel-execute:declarative-project (body params)
   "Execute command with Body and PARAMS from src block."
+  ;; Prioritize targets of yaml block
   (let ((project-file (or (cdr (assoc :file params))
-                          (cdr (assoc :tangle params))
-                          (buffer-file-name))))
+                          (cdr (assoc :tangle params))))
+        (block-begin (org-element-property :begin (org-element-context)))
+        (block-end (org-element-property :end (org-element-context))))
+    ;; default value for src block params are "no" for some fields
+    (pp (org-element-context))
+    (pp (org-element-property :begin (org-element-context)))
+    ;; TODO figure out how to represent location of src block
+    ;;  including file name, begining, end of block
+    ;;  OR use org-link format or similar
+    (pp (org-store-link nil))
+    (if (string= "no" project-file)
+        (setq project-file (buffer-file-name)))
     (with-temp-file (org-babel-temp-file "project-")
       (insert body)
       (let ((project (declarative-project--read-project-from-buffer)))
         (setf (declarative-project-project-file project) project-file)
-        (message "got this project to install:\n%s" project)
         (declarative-project--install-project project)))))
 
 (defun declarative-project--check-required-resources (project)
@@ -128,7 +138,6 @@
   (let ((reb-re-syntax 'string))
     (when (string-match declarative-project--github-url-regex-groups repo-url)
       ;; Capture groups:
-      ;; TODO these are wrong now for gitlab long paths, and the comment is too wide
       ;; 0          1               2             3                                   4
       ;; git@       github.com:     cuttlefisch/  treemacs-declarative-project-mode   .git
       ;; https://   github.com/     cuttlefisch/  prototype-emacs-devcontainer        .git
@@ -137,7 +146,6 @@
         ;; TODO this relies on :noerror flag from ghub
         (or (declarative-project--repo-data repo-name)
             `((name . ,repo-name)))))))
-
 
 (defun declarative-project--install-project-dependencies (project)
   "Clone any git dependencies locally in PROJECT."
@@ -210,19 +218,19 @@
   "Add project to any treemacs workspaces listed in PROJECT."
   (when-let ((workspaces (declarative-project-workspaces project)))
     (seq-map (lambda (workspace)
-               (treemacs-do-add-project-to-workspace
-                (declarative-project-root-directory project)
-                workspace))
-             workspaces)
-    (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)))
+               (unless (treemacs-declarative-workspaces--workspace-memberp
+                        (declarative-project-name project) workspace)
+                 (treemacs-do-add-project-to-workspace
+                  (declarative-project-root-directory project) workspace)))
+    workspaces)
+  (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)))
 
 (defun declarative-project--prep-target (project)
   "Prepare install directory & update agenda files for PROJECT install."
   (let ((root-dir (declarative-project-root-directory project)))
     (if (not (file-exists-p root-dir))
-        (if (and  (or  (file-writable-p root-dir) (file-writable-p (file-name-parent-directory root-dir)))
-                  (or declarative-project--clobber
-                      (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir))))
+        (if (or declarative-project--clobber
+                (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir)))
             (make-directory root-dir t)
           (warn "Installation Aborted")))
     (seq-map (lambda (agenda-file)
@@ -255,7 +263,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
            declarative-project--cached-projects))
 
 (defun declarative-project--read-cache ()
-  "Read project file paths from cache, and handle any change."
+  "Return list composed of newline separated files declaring projects."
   (save-excursion
     (with-temp-buffer
       (unless (file-exists-p declarative-project--cache-file)
@@ -307,6 +315,15 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 
 (defun declarative-project--read-project-from-file (project-file)
   "Return the declarative-project defined in PROJECT-FILE."
+  ;; TODO finish supporting org babel src block-defined projects here
+  ;; Current behavior ::
+  ;;    loads up PROJECT-FILE contents, assumed to be yaml
+  ;;    sends off to read-project-from-buffer to parse yaml
+  ;;
+  ;; Desired behavior ::
+  ;;    If file is an org file with begin/end position, or a link
+  ;;    open src block at location and insert its contents into
+  ;;    temp buffer. Then read project from that buffer
   (when (file-exists-p project-file)
     (with-temp-buffer
       (insert-file-contents project-file)
