@@ -1,10 +1,9 @@
 * declarative-project-mode
 
-A global minor mode for managing and installing a variety of project contents with a simple
-declarative syntax in Emacs.
-
-This global mode allows you to define a project as a conceptual grouping of software components,
-and then manage and install these components with ease.
+A global minor mode for managing and installing a variety of project contents with a
+simple declarative syntax in Emacs. With this mode we can specify a collection of git
+repositories and local resources, as well as update Emacs's state with Agenda files and
+workspaces using a simple YAML file.
 
 Currently supported behavior:
  - Specify target into which project installs
@@ -26,7 +25,7 @@ To install and manage a project in plain YAML:
 4. After the "Installation Finished!" message check contents of ~root-directory~
 
 ** SRC Block Embedded YAML
-There is no difference in functionality between yaml in source blocks and plain YAML
+There is no difference in functionality between YAML in source blocks and plain YAML
 project definitions; define projects following the standard YAML project file
 instructions.
 
@@ -55,9 +54,9 @@ workspaces:
 ** Defining a project
 Currently supported options:
 - ~name~ :: The display name for the project to Treemacs, etc.
-- ~root-directory~ :: The directory into which all project dependencies are installed. *Any
-  paths specified in the yaml spec are evaluated relative to ~root-directory~ for any
-  install operations.*
+- ~root-directory~ :: The directory into which all project dependencies are installed.
+  *Any* paths specified in the YAML spec are *relative* to ~root-directory~ for
+  any install operations.
 - ~agenda-files~ :: A list of files added to ~org-agenda-files~. Installation processes
   these *last*, so installation only creates these files if they are not otherwise created
   (copied, symlinked, etc.). Any of these already present are added to ~org-agenda-files~.
@@ -122,7 +121,7 @@ this list current without additional overhead.
 
 ** Org-Babel Support
 Install a project via org-babel by setting the src-block language to
-~declarative-project~, and hitting ~Enter~ in the yaml block.
+~declarative-project~, and hitting ~Enter~ in the YAML block.
 
 ** Persistent Project Cache
 Cache installed project source locations to rebuild agenda, workspaces, and other systems
