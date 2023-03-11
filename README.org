@@ -15,7 +15,7 @@ Currently supported behavior:
  - Assign project to [[https://github.com/cuttlefisch/treemacs-declarative-workspaces-mode][Treemacs Declarative Workspaces]]
 
 * Usage
-There are 2 supported specification formats: a YAML spec file, or the same YAML
+There are two supported specification formats: a YAML spec file, or the same YAML
 specification within an org mode source block.
 
 ** Plain YAML
