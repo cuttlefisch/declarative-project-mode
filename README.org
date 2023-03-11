@@ -4,35 +4,83 @@ A global minor mode for managing and installing a variety of project contents wi
 declarative syntax in Emacs.
 
 This global mode allows you to define a project as a conceptual grouping of software components,
-and then manage and install these components with ease. The mode currently supports
-installing git repositories as dependencies, and warning about missing required resources.
+and then manage and install these components with ease.
 
-To use, enable the global ~declarative-project-mode~, and visit a Yaml file with the
-following properties. When visiting the file, trigger
-~declarative-project--install-project~.
-- ~name~ :: The display name for the project to treemacs, etc.
-- ~root-directory~ :: The directory into which all project dependencies are installed.
-  Paths specified in the yaml spec are relative to ~root-directory~ for any install
-  operations.
-- ~agenda-files~ :: A list of files to add to ~org-agenda-files~. As these are processed
-  *last*, installation only creates these files if they are not otherwise created. Any of
-  these already present are just added to ~org-agenda-files~.
+Currently supported behavior:
+ - Specify target into which project installs
+ - Install git dependencies using HTTPS or SSH url format from Github or Gitlab
+ - Automatically add local project contents to Agenda, and create default agenda files
+ - Warn if any `required-resources` are missing
+ - Symlink and copy local files to project during install
+ - Assign project to [[https://github.com/cuttlefisch/treemacs-declarative-workspaces-mode][Treemacs Declarative Workspaces]]
+
+* Usage
+There are 2 supported specification formats: a YAML spec file, or the same YAML
+specification within an org mode source block.
+
+** Plain YAML
+To install and manage a project in plain YAML:
+1. Follow ~Defining a Project~ to create the YAML spec file
+2. Visit the file in Emacs with ~declarative-project-mode~ enabled
+3. Run the function ~(declarative-project--install-project)~
+4. After the "Installation Finished!" message check contents of ~root-directory~
+
+** SRC Block Embedded YAML
+There is no difference in functionality between yaml in source blocks and plain YAML
+project definitions; define projects following the standard YAML project file
+instructions.
+
+Execute the source block to install a project like the one below:
+#+begin_src org
+,#+begin_src declarative-project
+name: "Empty Project"
+root-directory: /tmp/empty-project-dir
+workspaces:
+ - "Deleteme"
+,#+end_src
+#+end_src
+
+If using the ~:tangle~ argument the target location is cached rather than the org source
+file. For example, the following source block would cache the path
+"/tmp/project-dir/project.yaml"
+#+begin_src org
+,#+begin_src declarative-project :tangle /tmp/project-dir/project.yaml
+name: "Empty Project"
+root-directory: /tmp/project-dir
+workspaces:
+ - "Deleteme"
+,#+end_src
+#+end_src
+
+** Defining a project
+Currently supported options:
+- ~name~ :: The display name for the project to Treemacs, etc.
+- ~root-directory~ :: The directory into which all project dependencies are installed. *Any
+  paths specified in the yaml spec are evaluated relative to ~root-directory~ for any
+  install operations.*
+- ~agenda-files~ :: A list of files added to ~org-agenda-files~. Installation processes
+  these *last*, so installation only creates these files if they are not otherwise created
+  (copied, symlinked, etc.). Any of these already present are added to ~org-agenda-files~.
 - ~required-resources~ :: A list of resources that must exist for the project to be
-  considered complete.
-- ~deps~ :: A list of git repositories to be cloned as dependencies.
-- ~local-files~ :: A list of files to be copied from their current location to the project
+  considered complete. Installation warns if any are missing.
+- ~deps~ :: A list of git repositories cloned into the ~root-directory~ or other ~dest~
+  relative to ~root-directory~.
+- ~local-files~ :: A list of files copied from their current location to the project
   directory.
-- ~symlinks~ :: List of link/target pairs to create as symlinks relative to the project
-  directory.
-- ~workspaces~ :: A list of workspace names this project should be added
-  to. Currently only [[https://github.com/Alexander-Miller/treemacs][Treemacs]] workspaces are supported.
+- ~symlinks~ :: List of link/target pairs to create as symbolic links relative to the
+  ~root-directory~ directory.
+- ~workspaces~ :: A list of workspace names this project should be added to. Currently
+  only supports [[https://github.com/cuttlefisch/treemacs-declarative-workspaces-mode][Treemacs Declarative Workspaces]].
 
-Note that any omitted ~dest~ or ~link~ field results in that resource's creation in the
-project root directory, named as the specified source ~filename.extension~.
+Note that any omitted ~dest~ or ~link~ field results in that resource's creation
+immediately within the project ~root-directory~, named matching the specified source
+~filename.extension~.
 
-#+begin_src yaml :tangle /tmp/PROJECT.yaml
+Example Project source block:
+#+begin_src declarative-project :noeval :notangle /tmp/PROJECT.yaml
 name: "Declarative Project Mode"
 root-directory: "/tmp/demo-project"
+#                                (↑) No trailing /
 agenda-files:
   - README.org
   - AGENDA.org
@@ -40,8 +88,10 @@ required-resources:
   - README.org
 deps:
   - src: git@github.com:cuttlefisch/declarative-project-mode.git
-    dest: DCM
   - src: git@github.com:cuttlefisch/declarative-project-mode.git
+    dest: DCM
+    # (↑) Creates /tmp/demo-project/DCM/
+  - src: https://github.com/cuttlefisch/treemacs-declarative-workspaces-mode
 local-files:
   - src: ~/path/to/src
     dest: path/to/dest
@@ -59,9 +109,6 @@ workspaces:
   - "Demos"
 #+end_src
 
-The mode can be activated by visiting a file in the project directory with the
-PROJECT.yaml file or by running (declarative-project-mode 1) in the project directory.
-
 * Noteworthy Features
 ** Decentralized Org Agenda Management
 Specifying ~agenda-files~ results in those files' addition to ~org-agenda-files~ upon
@@ -77,14 +124,20 @@ this list current without additional overhead.
 Install a project via org-babel by setting the src-block language to
 ~declarative-project~, and hitting ~Enter~ in the yaml block.
 
-** Treemacs Workspace Assignment
-Provided a list of treemacs workspaces, the installation process assigns this project to
-each specified worksace. This should help decentralize workspace configuration, helping
-construct conceptual groupings of projects regardless of their location in the filesystem.
+** Persistent Project Cache
+Cache installed project source locations to rebuild agenda, workspaces, and other systems
+across restarts.
+
+** Treemacs Declarative Workspace Assignment
+Provided a list of [[https://github.com/cuttlefisch/treemacs-declarative-workspaces-mode][Treemacs Declarative Workspaces]], the installation process assigns this
+project to each specified worksace. This helps decentralize workspace configuration,
+helping construct conceptual groupings of projects regardless of their location in the
+filesystem.
+
 ** Locally Copy or Symlink Resources
-It's often useful to maintain documentation in a form of knowlegebase such as Org Roam.
+It's often useful to maintain documentation in a form of knowledgebase such as Org Roam.
 This approach allows us to maintain a declarative set of symlinks to connect a project to
-the documentation, Rather than adapt the documentation & knowlege-building process to
+the documentation, Rather than adapt the documentation & knowledge-building process to
 conform to individual projects.
 
 * Future Plans
