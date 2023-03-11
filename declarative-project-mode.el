@@ -9,7 +9,7 @@
 ;; Version: 0.0.6
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
-;; Package-Requires: ((emacs "25.1") (ghub "3.5.1") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
+;; Package-Requires: ((emacs "27.1") (ghub "3.5.1") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
 ;;
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -124,21 +124,23 @@ Capture groups:
 (defun declarative-project--source-linkp (link)
   "Return match if LINK matches declarative-project-source-file-link-regex."
   (let ((reb-re-syntax 'string))
-    (string-match declarative-project-source-file-link-regex-groups link)))
+    (when (string-match declarative-project-source-file-link-regex-groups link)
+      `((:path . ,(match-string 1 link))
+       (:begin . ,(string-to-number (match-string 2 link)))
+       (:end . ,(string-to-number (match-string 3 link)))))))
 
 (defun org-babel-execute:declarative-project (body params)
   "Execute command with BODY and PARAMS from src block."
   ;; Prioritize targets of yaml block over source org file
-  (let ((source-file (or (cdr (assoc :file params))
-                         (cdr (assoc :tangle params))))
+  (let ((source-file (cdr (assoc :tangle params)))
         (block-begin (org-element-property :begin (org-element-context)))
         (block-end (org-element-property :end (org-element-context))))
 
     ;; default value for src block params are "no" for some fields
     (if (string= "no" source-file)
-        ;; Create basic link format `absolute/path.org::begin-char:end-char'
-        (setq source-file (format "%s::%d:%s" (buffer-file-name) block-begin block-end)))
-
+        ;; Create link to source block begin & end `absolute/path.org::begin-char:end-char'
+        (setq source-file (format "%s::%d:%s"
+                                  (buffer-file-name) block-begin block-end)))
     ;; Install the project
     (with-temp-file (org-babel-temp-file "project-")
       (insert body)
@@ -292,7 +294,12 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   "Destrucively filter missing projects from cached file paths."
   (let ((prev-cache declarative-project--cached-projects))
     (setq declarative-project--cached-projects
-          (cl-remove-if-not #'file-exists-p declarative-project--cached-projects))
+          (cl-remove-if-not (lambda (source-file)
+                              (or (file-exists-p source-file)
+                                  (and-let* ((match-groups (declarative-project--source-linkp source-file))
+                                             (path (alist-get :path match-groups))
+                                             (file-exists-p path)))))
+                            declarative-project--cached-projects))
     (declarative-project--save-cache)
     (cl-set-difference prev-cache declarative-project--cached-projects)))
 
@@ -335,23 +342,22 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   "Return the declarative-project defined at SOURCE-FILE."
   (save-excursion
     (with-temp-buffer
-      (let ((project-string ""))
-        (cond
-         ((declarative-project--source-linkp source-file)
-          ;; Pull capture groups from matches
-          ;; open buffer and insert src block contents from location
-          ;; NOTE: parsing the buffer with the src block begin/end
-          ;; present might still work b/c yaml parsing handles it fine,
-          ;; but we explicitly use the src block value here.
-          (let ((target-path (match-string 1 source-file))
-                (begin (string-to-number (match-string 2 source-file)))
-                (end (string-to-number (match-string 3 source-file))))
-            (insert-file-contents target-path nil (- begin 1) end))
-          (setq project-string (org-element-property :value (org-element-at-point))))
-         (t
-          (when (file-exists-p source-file)
-            (insert-file-contents source-file)
-            (setq project-string (buffer-string)))))
+      (let ((project-string (if-let* ((match-groups (declarative-project--source-linkp source-file))
+                                      (path (alist-get :path match-groups))
+                                      (begin (alist-get :begin match-groups))
+                                      (end (alist-get :end match-groups)))
+                                (progn
+                                  ;; Pull capture groups from matches
+                                  ;; open buffer and insert src block contents from location
+                                  ;; NOTE: parsing the buffer with the src block begin/end
+                                  ;; present might still work b/c yaml parsing handles it fine,
+                                  ;; but we explicitly use the src block value here.
+                                  (insert-file-contents path nil (- begin 1) end)
+                                  (org-element-property :value (org-element-at-point)))
+                              (progn
+                                (when (file-exists-p source-file)
+                                  (insert-file-contents source-file)
+                                  (buffer-string))))))
         (let ((project (declarative-project--read-project-from-string project-string)))
           (setf (declarative-project-source-file project) source-file)
           project)))))
@@ -363,13 +369,15 @@ Any missing files will be created if declarative-project--persist-agenda-files."
          (project (or project
                       (declarative-project--read-project-from-file source-file)
                       (declarative-project--read-project-from-file (expand-file-name (buffer-file-name (current-buffer)))))))
+    ;; Refresh cache just in case, seems to fix startup issue.
+    (setq declarative-project--cached-projects (declarative-project--read-cache))
     (declarative-project--prep-target project)
     (declarative-project--install-project-dependencies project)
     (declarative-project--copy-local-files project)
     (declarative-project--create-symlinks project)
     (declarative-project--append-to-cache (declarative-project-source-file project))
-    (declarative-project--check-required-resources project)
     (setq declarative-project--cached-projects (declarative-project--read-cache))
+    (declarative-project--check-required-resources project)
     (declarative-project--rebuild-org-agenda)
     (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)
     (message "...Finished Installation!")))
@@ -378,8 +386,8 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   "Load in cache, prune and handle agenda files."
   (when declarative-project-mode
     (message "Declarative Project Mode Enabled!")
-    (yaml-mode)
     (setq declarative-project--cached-projects (declarative-project--read-cache))
+    (warn "Found these projects boss:\n%s" declarative-project--cached-projects)
     (when declarative-project--auto-prune-cache
       (warn "WARNING :: Pruned the following projects from cache:\n%s"
             (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
