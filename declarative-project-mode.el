@@ -5,11 +5,11 @@
 ;; Author: Hayden Stanko <hayden@cuttle.codes>
 ;; Maintainer: Hayden Stanko <hayden@cuttle.codes>
 ;; Created: January 13, 2023
-;; Modified: February 09, 2023
-;; Version: 0.0.5
+;; Modified: March 09, 2023
+;; Version: 0.0.6
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
-;; Package-Requires: ((emacs "25.1") (ghub "3.5.1") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
+;; Package-Requires: ((emacs "27.1") (ghub "3.5.1") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
 ;;
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -50,7 +50,7 @@
 (cl-defstruct declarative-project
   (name                 ""      :type string)
   (root-directory       ""      :type string)
-  (project-file         ""      :type string)
+  (source-file          ""      :type string)
   (required-resources   '()     :type list)
   (deps                 '()     :type list)
   (local-files          '()     :type list)
@@ -78,36 +78,75 @@
   :group 'declarative-project-mode)
 
 (defcustom declarative-project--auto-prune-cache nil
-  "When t don't prompt when removing project file paths from cache.."
+  "When t don't prompt when removing project file paths from cache."
   :type 'boolean
   :group 'declarative-project-mode)
 
 (defvar declarative-project--cache-file
   (concat user-emacs-directory "declarative-project-cache.el")
-  "Store path to all declared projects.")
+  "Persistent cache of all declared projects.")
 
 (defvar declarative-project--cached-projects
   '()
-  "List of declared projects' project specification file paths.")
+  "List of declared projects source file paths.")
 
 (defvar declarative-project--github-url-regex-groups
   "\\(https://\\|git@\\)[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]+[:\\/]\\([a-zA-Z0-9_-]+\\/\\)*\\([a-zA-Z0-9_-]+\\)\\(.git\\)?"
-  "Regular expression to extract github username/repository-name from a github url.")
+  "Regular expression to extract username/repository-name from a github url.
+
+Capture groups:
+---------------
+  1         2           3            4                                    5
+  git@     github.com:  cuttlefisch/ declarative-project-mode             .git
+  git@     github.com:  cuttlefisch/ treemacs-declarative-project-mode    .git
+  git@     github.com:  cuttlefisch/ prototype-emacs-devcontainer         .git
+  git@     gitlab.com:  gitlab-org/  gitlab-docs                          .git
+  https:// github.com/  cuttlefisch/ declarative-project-mode
+  https:// github.com/  cuttlefisch/ treemacs-declarative-workspaces-mode
+  https:// gitlab.com/  gitlab-org/  gitlab-docs")
+
+(defvar declarative-project-source-file-link-regex-groups
+  "\\(^\\/.*\\)::\\([0-9]+\\):\\([0-9]+\\)$"
+  "Regular expression to match source file links matching filepath::begin:end.
+
+`begin' and `end' are buffer positions for the beginning and end of an
+org source block of type `declarative-project'.
+
+Capture groups:
+---------------
+1                                                                    2      3
+/home/username/RoamNotes/99999999999999-declared-projectfile.org ::  420 :  1085")
 
 (defvar declarative-project-font-lock-keywords
   `(,@yaml-font-lock-keywords)
-  "Match yaml font-lock keywords.")
+  "Match yaml font-lock keywords to fontify declarative-project src blocks.")
+
+(defun declarative-project--source-linkp (link)
+  "Return match if LINK matches declarative-project-source-file-link-regex."
+  (let ((reb-re-syntax 'string))
+    (when (string-match declarative-project-source-file-link-regex-groups link)
+      `((:path . ,(match-string 1 link))
+       (:begin . ,(string-to-number (match-string 2 link)))
+       (:end . ,(string-to-number (match-string 3 link)))))))
 
 (defun org-babel-execute:declarative-project (body params)
-  "Execute command with Body and PARAMS from src block."
-  (let ((project-file (or (cdr (assoc :file params))
-                          (cdr (assoc :tangle params))
-                          (buffer-file-name))))
+  "Execute command with BODY and PARAMS from src block."
+  ;; Prioritize targets of yaml block over source org file
+  (let ((source-file (cdr (assoc :tangle params)))
+        (block-begin (org-element-property :begin (org-element-context)))
+        (block-end (org-element-property :end (org-element-context))))
+
+    ;; default value for src block params are "no" for some fields
+    (if (string= "no" source-file)
+        ;; Create link to source block begin & end `absolute/path.org::begin-char:end-char'
+        (setq source-file (format "%s::%d:%s"
+                                  (buffer-file-name) block-begin block-end)))
+    ;; Install the project
     (with-temp-file (org-babel-temp-file "project-")
       (insert body)
       (let ((project (declarative-project--read-project-from-buffer)))
-        (setf (declarative-project-project-file project) project-file)
-        (message "got this project to install:\n%s" project)
+        ;; Make sure we have the correct source file
+        (setf (declarative-project-source-file project) source-file)
         (declarative-project--install-project project)))))
 
 (defun declarative-project--check-required-resources (project)
@@ -127,17 +166,10 @@
   "Return best guess at project name from REPO-URL and return repo data."
   (let ((reb-re-syntax 'string))
     (when (string-match declarative-project--github-url-regex-groups repo-url)
-      ;; Capture groups:
-      ;; TODO these are wrong now for gitlab long paths, and the comment is too wide
-      ;; 0          1               2             3                                   4
-      ;; git@       github.com:     cuttlefisch/  treemacs-declarative-project-mode   .git
-      ;; https://   github.com/     cuttlefisch/  prototype-emacs-devcontainer        .git
       (let ((repo-name (match-string 3 repo-url)))
-        (warn "got repo data:\t%s" repo-name)
-        ;; TODO this relies on :noerror flag from ghub
+        ;; REVIEW this relies on :noerror flag from ghub
         (or (declarative-project--repo-data repo-name)
             `((name . ,repo-name)))))))
-
 
 (defun declarative-project--install-project-dependencies (project)
   "Clone any git dependencies locally in PROJECT."
@@ -160,6 +192,7 @@
                        (vc-clone src 'Git (expand-file-name dest-path))))))
                project-deps))))
 
+;; REVIEW is this still a problem?
 ;; TODO this fails if you try
 ;; local-files:
 ;;   - src: README.org
@@ -206,23 +239,13 @@
                    (warn "No such file or directory:\t%s" targ))))
              symlinks)))
 
-(defun declarative-project--apply-treemacs-workspaces (project)
-  "Add project to any treemacs workspaces listed in PROJECT."
-  (when-let ((workspaces (declarative-project-workspaces project)))
-    (seq-map (lambda (workspace)
-               (treemacs-do-add-project-to-workspace
-                (declarative-project-root-directory project)
-                workspace))
-             workspaces)
-    (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)))
 
 (defun declarative-project--prep-target (project)
   "Prepare install directory & update agenda files for PROJECT install."
   (let ((root-dir (declarative-project-root-directory project)))
     (if (not (file-exists-p root-dir))
-        (if (and  (or  (file-writable-p root-dir) (file-writable-p (file-name-parent-directory root-dir)))
-                  (or declarative-project--clobber
-                      (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir))))
+        (if (or declarative-project--clobber
+                (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir)))
             (make-directory root-dir t)
           (warn "Installation Aborted")))
     (seq-map (lambda (agenda-file)
@@ -235,12 +258,13 @@
              (declarative-project-agenda-files project))
     (message "Finished adding agenda files")))
 
+
 (defun declarative-project--rebuild-org-agenda ()
   "Add any valid agenda files from cached projects to org-agenda-files.
 Any missing files will be created if declarative-project--persist-agenda-files."
-  (seq-map (lambda (project-file)
-             (when (file-exists-p project-file)
-               (let ((project (declarative-project--read-project-from-file project-file)))
+  (seq-map (lambda (source-file)
+             (when (file-exists-p source-file)
+               (let ((project (declarative-project--read-project-from-file source-file)))
                  (when (declarative-project-p project)
                    (seq-map (lambda (agenda-file)
                               (let* ((root-dir (declarative-project-root-directory project))
@@ -255,7 +279,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
            declarative-project--cached-projects))
 
 (defun declarative-project--read-cache ()
-  "Read project file paths from cache, and handle any change."
+  "Return list composed of newline separated files declaring projects."
   (save-excursion
     (with-temp-buffer
       (unless (file-exists-p declarative-project--cache-file)
@@ -267,10 +291,15 @@ Any missing files will be created if declarative-project--persist-agenda-files."
           (split-string raw-data "\n" t))))))
 
 (defun declarative-project--prune-cache ()
-  "Filter missing projects from cached file paths."
+  "Destrucively filter missing projects from cached file paths."
   (let ((prev-cache declarative-project--cached-projects))
     (setq declarative-project--cached-projects
-          (cl-remove-if-not #'file-exists-p declarative-project--cached-projects))
+          (cl-remove-if-not (lambda (source-file)
+                              (or (file-exists-p source-file)
+                                  (and-let* ((match-groups (declarative-project--source-linkp source-file))
+                                             (path (alist-get :path match-groups))
+                                             (file-exists-p path)))))
+                            declarative-project--cached-projects))
     (declarative-project--save-cache)
     (cl-set-difference prev-cache declarative-project--cached-projects)))
 
@@ -282,52 +311,73 @@ Any missing files will be created if declarative-project--persist-agenda-files."
             (newline))
           declarative-project--cached-projects)))
 
-(defun declarative-project--append-to-cache (project-file)
-  "Append PROJECT-FILE to declared project cache file."
-  (append-to-file (format "%s\n" project-file) nil declarative-project--cache-file)
-  (add-to-list 'declarative-project--cached-projects project-file)
+(defun declarative-project--append-to-cache (source-file)
+  "Append SOURCE-FILE to declared project cache file."
+  (append-to-file (format "%s\n" source-file) nil declarative-project--cache-file)
+  (add-to-list 'declarative-project--cached-projects source-file)
   (declarative-project--save-cache))
 
 (defun declarative-project--read-project-from-buffer (&optional buffername)
   "Return declarative-project defined by current buffer or BUFFERNAME."
   (with-current-buffer (or buffername (current-buffer))
-    (let ((project-resources (yaml-parse-string (buffer-string)
-                                                :null-object nil
-                                                :sequence-type 'list)))
-      (make-declarative-project
-       :name (gethash 'name project-resources)
-       :root-directory (or (gethash 'root-directory project-resources)
-                           (gethash 'project-file project-resources))
-       :required-resources (gethash 'required-resources project-resources)
-       :deps (gethash 'deps project-resources)
-       :local-files (gethash 'local-files project-resources)
-       :symlinks (gethash 'symlinks project-resources)
-       :agenda-files (gethash 'agenda-files project-resources)
-       :workspaces (gethash 'workspaces project-resources)))))
+    (declarative-project--read-project-from-string (buffer-string))))
 
-(defun declarative-project--read-project-from-file (project-file)
-  "Return the declarative-project defined in PROJECT-FILE."
-  (when (file-exists-p project-file)
+(defun declarative-project--read-project-from-string (&optional string)
+  "Return declarative-project defined in yaml STRING."
+  (let ((project-resources (yaml-parse-string (or string (buffer-string))
+                                              :null-object nil
+                                              :sequence-type 'list)))
+    (make-declarative-project
+     :name (gethash 'name project-resources)
+     :root-directory (or (gethash 'root-directory project-resources)
+                         (gethash 'source-file project-resources))
+     :required-resources (gethash 'required-resources project-resources)
+     :deps (gethash 'deps project-resources)
+     :local-files (gethash 'local-files project-resources)
+     :symlinks (gethash 'symlinks project-resources)
+     :agenda-files (gethash 'agenda-files project-resources)
+     :workspaces (gethash 'workspaces project-resources))))
+
+(defun declarative-project--read-project-from-file (source-file)
+  "Return the declarative-project defined at SOURCE-FILE."
+  (save-excursion
     (with-temp-buffer
-      (insert-file-contents project-file)
-      (let ((project (declarative-project--read-project-from-buffer)))
-        (setf (declarative-project-project-file project) project-file)))))
+      (let ((project-string (if-let* ((match-groups (declarative-project--source-linkp source-file))
+                                      (path (alist-get :path match-groups))
+                                      (begin (alist-get :begin match-groups))
+                                      (end (alist-get :end match-groups)))
+                                (progn
+                                  ;; Pull capture groups from matches
+                                  ;; open buffer and insert src block contents from location
+                                  ;; NOTE: parsing the buffer with the src block begin/end
+                                  ;; present might still work b/c yaml parsing handles it fine,
+                                  ;; but we explicitly use the src block value here.
+                                  (insert-file-contents path nil (- begin 1) end)
+                                  (org-element-property :value (org-element-at-point)))
+                              (progn
+                                (when (file-exists-p source-file)
+                                  (insert-file-contents source-file)
+                                  (buffer-string))))))
+        (let ((project (declarative-project--read-project-from-string project-string)))
+          (setf (declarative-project-source-file project) source-file)
+          project)))))
 
-(defun declarative-project--install-project (&optional project project-file)
+(defun declarative-project--install-project (&optional project source-file)
   "Step step through project spec & apply any blocks found."
   (interactive)
-  (let* ((project-file (or project-file (expand-file-name "PROJECT.yaml" default-directory)))
+  (let* ((source-file (or source-file (expand-file-name "PROJECT.yaml" default-directory)))
          (project (or project
-                      (declarative-project--read-project-from-file project-file)
+                      (declarative-project--read-project-from-file source-file)
                       (declarative-project--read-project-from-file (expand-file-name (buffer-file-name (current-buffer)))))))
+    ;; Refresh cache just in case, seems to fix startup issue.
+    (setq declarative-project--cached-projects (declarative-project--read-cache))
     (declarative-project--prep-target project)
     (declarative-project--install-project-dependencies project)
     (declarative-project--copy-local-files project)
     (declarative-project--create-symlinks project)
-    (declarative-project--apply-treemacs-workspaces project)
-    (declarative-project--append-to-cache (declarative-project-project-file project))
-    (declarative-project--check-required-resources project)
+    (declarative-project--append-to-cache (declarative-project-source-file project))
     (setq declarative-project--cached-projects (declarative-project--read-cache))
+    (declarative-project--check-required-resources project)
     (declarative-project--rebuild-org-agenda)
     (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)
     (message "...Finished Installation!")))
@@ -336,8 +386,8 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   "Load in cache, prune and handle agenda files."
   (when declarative-project-mode
     (message "Declarative Project Mode Enabled!")
-    (yaml-mode)
     (setq declarative-project--cached-projects (declarative-project--read-cache))
+    (warn "Found these projects boss:\n%s" declarative-project--cached-projects)
     (when declarative-project--auto-prune-cache
       (warn "WARNING :: Pruned the following projects from cache:\n%s"
             (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
