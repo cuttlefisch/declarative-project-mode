@@ -366,6 +366,13 @@ Any missing files will be created if declarative-project--persist-agenda-files."
           (setf (declarative-project-source-file project) source-file)
           project)))))
 
+(defun declarative-project--install-project-from-file (&optional source-file)
+  "Install a declared project from SOURCE-FILE or `current-buffer-file'."
+  (let ((source-file (or source-file
+                         (buffer-file-name))))
+    (declarative-project--install-project
+     (declarative-project--read-project-from-file source-file))))
+
 (defun declarative-project--install-project (&optional project source-file)
   "Step step through project spec & apply any blocks found."
   (interactive)
