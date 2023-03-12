@@ -39,7 +39,7 @@
 ;; declarative-project--persist-agenda-files respectively.
 ;;
 ;;; Code:
-(require 'ghub)
+;; (require 'ghub)
 (require 'vc)
 (require 'treemacs)
 (require 'yaml)
@@ -161,10 +161,10 @@ Capture groups:
                  (warn (concat "Missing required resource: " resource))))
              required-resources)))
 
-(defun declarative-project--repo-data (repository-full-name)
-  "Return repository information from the github API for REPOSITORY-FULL-NAME."
-  (let ((query (format "repos/%s" repository-full-name)))
-    (ghub-get query nil :auth 'dpm :noerror t)))
+;; (defun declarative-project--repo-data (repository-full-name)
+;;   "Return repository information from the github API for REPOSITORY-FULL-NAME."
+;;   (let ((query (format "repos/%s" repository-full-name)))
+;;     (ghub-get query nil :auth 'dpm :noerror t)))
 
 (defun declarative-project--repo-data-from-url (repo-url)
   "Return best guess at project name from REPO-URL and return repo data."
@@ -172,8 +172,7 @@ Capture groups:
     (when (string-match declarative-project--github-url-regex-groups repo-url)
       (let ((repo-name (match-string 3 repo-url)))
         ;; REVIEW this relies on :noerror flag from ghub
-        (or (declarative-project--repo-data repo-name)
-            `((name . ,repo-name)))))))
+            `((name . ,repo-name))))))
 
 (defun declarative-project--install-project-dependencies (project)
   "Clone any git dependencies locally in PROJECT."
