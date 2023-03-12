@@ -62,6 +62,10 @@
   "Create a declarative-project with PROJECT-ATTRS."
   (apply 'make-declarative-project project-attrs))
 
+;;;###autoload
+(defvar declarative-project-mode nil
+  "Var for declarative-workspaces-mode.")
+
 (defcustom declarative-project--apply-treemacs-workspaces-hook nil
   "Hooks to run whenever the treemacs-workspaces are applied."
   :type 'hook
