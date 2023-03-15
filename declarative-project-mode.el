@@ -390,7 +390,8 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (declarative-project--check-required-resources project)
     (declarative-project--rebuild-org-agenda)
     (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook project)
-    (message "...Finished Installation!")))
+    (message "...Finished Installation!")
+    project))
 
 (defun declarative-project--mode-setup ()
   "Load in cache, prune and handle agenda files."
