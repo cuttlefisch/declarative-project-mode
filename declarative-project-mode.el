@@ -46,6 +46,7 @@
 (require 'yaml-mode)
 (require 'ob)
 (require 'ob-eval)
+(require 'org)
 
 (cl-defstruct declarative-project
   (name                 ""      :type string)
@@ -293,18 +294,35 @@ Any missing files will be created if declarative-project--persist-agenda-files."
             '()
           (split-string raw-data "\n" t))))))
 
+;; BUG this fails on several counts, usually resulting in total
+;; anhilation of the cache
 (defun declarative-project--prune-cache ()
   "Destrucively filter missing projects from cached file paths."
   (let ((prev-cache declarative-project--cached-projects))
+    ;; First remove invalid definitions
     (setq declarative-project--cached-projects
           (cl-remove-if-not (lambda (source-file)
                               (or (file-exists-p source-file)
-                                  (and-let* ((match-groups (declarative-project--source-linkp source-file))
-                                             (path (alist-get :path match-groups))
-                                             (file-exists-p path)))))
+                                  (let* ((match-groups (declarative-project--source-linkp source-file))
+                                         (path (alist-get :path match-groups)))
+                                    ;; To remain in the cache
+                                    ;; - A) :path must be valid string
+                                    ;; - B) File must exist at :path
+                                    ;; - C) source block at :begin :end within file at :path must be valid project
+                                    (and (stringp path)  ;; (A)
+                                         (file-exists-p path) ;; (B)
+                                         ;; (C)
+                                         (declarative-project-p
+                                          (declarative-project--read-project-from-file source-file))))))
                             declarative-project--cached-projects))
+    ;; TODO Next remove duplicate entries,
+    ;; - For each unique combination of path & :begin
+    ;;          collect all entries in cache with that path
+    ;;          use temp buffer to find correct :end value
+    ;;          cache new entry with correct path::begin:end
     (declarative-project--save-cache)
-    (cl-set-difference prev-cache declarative-project--cached-projects)))
+    ;; (cl-set-difference prev-cache declarative-project--cached-projects)
+    ))
 
 (defun declarative-project--save-cache ()
   "Save the list of cached projects to the cache file."
@@ -314,6 +332,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
             (newline))
           declarative-project--cached-projects)))
 
+;; BUG this creates duplicate projects
 (defun declarative-project--append-to-cache (source-file)
   "Append SOURCE-FILE to declared project cache file."
   (append-to-file (format "%s\n" source-file) nil declarative-project--cache-file)
@@ -327,19 +346,27 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 
 (defun declarative-project--read-project-from-string (&optional string)
   "Return declarative-project defined in yaml STRING."
-  (let ((project-resources (yaml-parse-string (or string (buffer-string))
-                                              :null-object nil
-                                              :sequence-type 'list)))
-    (make-declarative-project
-     :name (gethash 'name project-resources)
-     :root-directory (or (gethash 'root-directory project-resources)
-                         (gethash 'source-file project-resources))
-     :required-resources (gethash 'required-resources project-resources)
-     :deps (gethash 'deps project-resources)
-     :local-files (gethash 'local-files project-resources)
-     :symlinks (gethash 'symlinks project-resources)
-     :agenda-files (gethash 'agenda-files project-resources)
-     :workspaces (gethash 'workspaces project-resources))))
+  (let ((project-resources (condition-case err (yaml-parse-string (or string (buffer-string))
+                                                                  :null-object nil
+                                                                  :sequence-type 'list)
+                             (error (message "No valid yaml")
+                                         nil))))
+    (if project-resources
+        (progn
+          ;(message "Found valid project from string")
+          (make-declarative-project
+           :name (gethash 'name project-resources)
+           :root-directory (or (gethash 'root-directory project-resources)
+                               (gethash 'source-file project-resources))
+           :required-resources (gethash 'required-resources project-resources)
+           :deps (gethash 'deps project-resources)
+           :local-files (gethash 'local-files project-resources)
+           :symlinks (gethash 'symlinks project-resources)
+           :agenda-files (gethash 'agenda-files project-resources)
+           :workspaces (gethash 'workspaces project-resources)))
+      (progn
+        ;(message "Invalid project from string")
+        nil))))
 
 (defun declarative-project--read-project-from-file (source-file)
   "Return the declarative-project defined at SOURCE-FILE."
@@ -355,15 +382,24 @@ Any missing files will be created if declarative-project--persist-agenda-files."
                                   ;; NOTE: parsing the buffer with the src block begin/end
                                   ;; present might still work b/c yaml parsing handles it fine,
                                   ;; but we explicitly use the src block value here.
+                                  ;(message "Found source block for: %s" source-file)
                                   (insert-file-contents path nil (- begin 1) end)
-                                  (org-element-property :value (org-element-at-point)))
+                                  ;(message "Working with this yaml: \n%s" (buffer-string))
+                                  (goto-char 0)
+                                  (condition-case err (org-element-property :value (org-element-at-point))
+                                    (error
+                                     (message "No valid org element at point.")
+                                     "")))
                               (progn
                                 (when (file-exists-p source-file)
                                   (insert-file-contents source-file)
                                   (buffer-string))))))
-        (let ((project (declarative-project--read-project-from-string project-string)))
-          (setf (declarative-project-source-file project) source-file)
-          project)))))
+        (let ((project (or (declarative-project--read-project-from-string project-string) nil)))
+          (if (declarative-project-p project)
+              (progn (setf (declarative-project-source-file project) source-file)
+                     project)
+            (progn (message "No valid project at %s" project-string)
+                   nil)))))))
 
 (defun declarative-project--install-project-from-file (&optional source-file)
   "Install a declared project from SOURCE-FILE or `current-buffer-file'."
