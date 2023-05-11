@@ -48,6 +48,10 @@
 (require 'ob-eval)
 (require 'org)
 
+
+;; ----------------------------------------------------------------------------
+;; Project struct and initialization
+;; ----------------------------------------------------------------------------
 (cl-defstruct declarative-project
   (name                 ""      :type string)
   (root-directory       ""      :type string)
@@ -63,6 +67,10 @@
   "Create a declarative-project with PROJECT-ATTRS."
   (apply 'make-declarative-project project-attrs))
 
+
+;; ----------------------------------------------------------------------------
+;; Mode & Custom Variables
+;; ----------------------------------------------------------------------------
 ;;;###autoload
 (defvar declarative-project-mode nil
   "Var for declarative-workspaces-mode.")
@@ -122,17 +130,13 @@ Capture groups:
 1                                                                    2      3
 /home/username/RoamNotes/99999999999999-declared-projectfile.org ::  420 :  1085")
 
+
+;; ----------------------------------------------------------------------------
+;; Org Babel Integration
+;; ----------------------------------------------------------------------------
 (defvar declarative-project-font-lock-keywords
   `(,@yaml-font-lock-keywords)
   "Match yaml font-lock keywords to fontify declarative-project src blocks.")
-
-(defun declarative-project--source-linkp (link)
-  "Return match if LINK matches declarative-project-source-file-link-regex."
-  (let ((reb-re-syntax 'string))
-    (when (string-match declarative-project-source-file-link-regex-groups link)
-      `((:path . ,(match-string 1 link))
-       (:begin . ,(string-to-number (match-string 2 link)))
-       (:end . ,(string-to-number (match-string 3 link)))))))
 
 (defun org-babel-execute:declarative-project (body params)
   "Execute command with BODY and PARAMS from src block."
@@ -154,14 +158,9 @@ Capture groups:
         (setf (declarative-project-source-file project) source-file)
         (declarative-project--install-project project)))))
 
-(defun declarative-project--check-required-resources (project)
-  "Warn if any resources labeled required in PROJECT are missing."
-  (when-let ((required-resources (declarative-project-required-resources project)))
-    (seq-map (lambda (resource)
-               (unless (file-exists-p resource)
-                 (warn (concat "Missing required resource: " resource))))
-             required-resources)))
-
+;; ----------------------------------------------------------------------------
+;; Git Interactions
+;; ----------------------------------------------------------------------------
 ;; (defun declarative-project--repo-data (repository-full-name)
 ;;   "Return repository information from the github API for REPOSITORY-FULL-NAME."
 ;;   (let ((query (format "repos/%s" repository-full-name)))
@@ -174,6 +173,36 @@ Capture groups:
       (let ((repo-name (match-string 3 repo-url)))
         ;; REVIEW this relies on :noerror flag from ghub
             `((name . ,repo-name))))))
+
+
+;; ----------------------------------------------------------------------------
+;; Project Installation Helpers
+;; ----------------------------------------------------------------------------
+(defun declarative-project--check-required-resources (project)
+  "Warn if any resources labeled required in PROJECT are missing."
+  (when-let ((required-resources (declarative-project-required-resources project)))
+    (seq-map (lambda (resource)
+               (unless (file-exists-p resource)
+                 (warn (concat "Missing required resource: " resource))))
+             required-resources)))
+
+(defun declarative-project--prep-target (project)
+  "Prepare install directory & update agenda files for PROJECT install."
+  (let ((root-dir (declarative-project-root-directory project)))
+    (if (not (file-exists-p root-dir))
+        (if (or declarative-project--clobber
+                (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir)))
+            (make-directory root-dir t)
+          (warn "Installation Aborted")))
+    (seq-map (lambda (agenda-file)
+               (let* ((root-dir (declarative-project-root-directory project))
+                      (file-path (concat root-dir "/" agenda-file)))
+                 (unless (file-exists-p file-path)
+                   (write-region "" nil file-path))
+                 (unless (member file-path org-agenda-files)
+                   (add-to-list 'org-agenda-files file-path))))
+             (declarative-project-agenda-files project))
+    (message "Finished adding agenda files")))
 
 (defun declarative-project--install-project-dependencies (project)
   "Clone any git dependencies locally in PROJECT."
@@ -227,7 +256,6 @@ Capture groups:
            (warn "No such file or directory:\t%s" src)))))
      local-files)))
 
-
 (defun declarative-project--create-symlinks (project)
   "Create any symlinks in PROJECT struct."
   (when-let ((symlinks (declarative-project-symlinks project)))
@@ -244,25 +272,9 @@ Capture groups:
              symlinks)))
 
 
-(defun declarative-project--prep-target (project)
-  "Prepare install directory & update agenda files for PROJECT install."
-  (let ((root-dir (declarative-project-root-directory project)))
-    (if (not (file-exists-p root-dir))
-        (if (or declarative-project--clobber
-                (yes-or-no-p (format "Directory %s does not exist, create it? " root-dir)))
-            (make-directory root-dir t)
-          (warn "Installation Aborted")))
-    (seq-map (lambda (agenda-file)
-               (let* ((root-dir (declarative-project-root-directory project))
-                      (file-path (concat root-dir "/" agenda-file)))
-                 (unless (file-exists-p file-path)
-                   (write-region "" nil file-path))
-                 (unless (member file-path org-agenda-files)
-                   (add-to-list 'org-agenda-files file-path))))
-             (declarative-project-agenda-files project))
-    (message "Finished adding agenda files")))
-
-
+;; ----------------------------------------------------------------------------
+;; Handle Org Agenda
+;; ----------------------------------------------------------------------------
 (defun declarative-project--rebuild-org-agenda ()
   "Add any valid agenda files from cached projects to org-agenda-files.
 Any missing files will be created if declarative-project--persist-agenda-files."
@@ -282,6 +294,18 @@ Any missing files will be created if declarative-project--persist-agenda-files."
                             (declarative-project-agenda-files project))))))
            declarative-project--cached-projects))
 
+
+;; ----------------------------------------------------------------------------
+;; Handle Caching
+;; ----------------------------------------------------------------------------
+(defun declarative-project--source-linkp (link)
+  "Return match if LINK matches declarative-project-source-file-link-regex."
+  (let ((reb-re-syntax 'string))
+    (when (string-match declarative-project-source-file-link-regex-groups link)
+      `((:path . ,(match-string 1 link))
+       (:begin . ,(string-to-number (match-string 2 link)))
+       (:end . ,(string-to-number (match-string 3 link)))))))
+
 (defun declarative-project--read-cache ()
   "Return list composed of newline separated files declaring projects."
   (save-excursion
@@ -294,8 +318,25 @@ Any missing files will be created if declarative-project--persist-agenda-files."
             '()
           (split-string raw-data "\n" t))))))
 
-;; BUG this fails on several counts, usually resulting in total
-;; anhilation of the cache
+(defun declarative-project--save-cache ()
+  "Save the list of cached projects to the cache file."
+  (with-temp-file declarative-project--cache-file
+    (mapc (lambda (str)
+            (insert str)
+            (newline))
+          declarative-project--cached-projects)))
+
+;; BUG this creates duplicate projects
+(defun declarative-project--append-to-cache (source-file)
+  "Append SOURCE-FILE to declared project cache file."
+  (append-to-file (format "%s\n" source-file) nil declarative-project--cache-file)
+  (add-to-list 'declarative-project--cached-projects source-file)
+  (declarative-project--save-cache))
+
+;; BUG this still allows for duplicate cache entries if the :end of the link
+;; is unique like so:
+;; /home/heimdall/RoamNotes/20230113170058-declarative_project_minor_mode.org::425:1059
+;; /home/heimdall/RoamNotes/20230113170058-declarative_project_minor_mode.org::425:1065
 (defun declarative-project--prune-cache ()
   "Destrucively filter missing projects from cached file paths."
   (let ((prev-cache declarative-project--cached-projects))
@@ -324,49 +365,35 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     ;; (cl-set-difference prev-cache declarative-project--cached-projects)
     ))
 
-(defun declarative-project--save-cache ()
-  "Save the list of cached projects to the cache file."
-  (with-temp-file declarative-project--cache-file
-    (mapc (lambda (str)
-            (insert str)
-            (newline))
-          declarative-project--cached-projects)))
 
-;; BUG this creates duplicate projects
-(defun declarative-project--append-to-cache (source-file)
-  "Append SOURCE-FILE to declared project cache file."
-  (append-to-file (format "%s\n" source-file) nil declarative-project--cache-file)
-  (add-to-list 'declarative-project--cached-projects source-file)
-  (declarative-project--save-cache))
+;; ----------------------------------------------------------------------------
+;; Utilities for parsing projects
+;; ----------------------------------------------------------------------------
+(defun declarative-project--read-project-from-string (&optional string)
+  "Return declarative-project defined in yaml STRING."
+  (let ((project-resources (condition-case err
+                               (yaml-parse-string (or string (buffer-string))
+                                                  :null-object nil
+                                                  :sequence-type 'list)
+                             (error (message "No valid yaml")
+                                    nil))))
+    (if project-resources
+        (make-declarative-project
+         :name (gethash 'name project-resources)
+         :root-directory (or (gethash 'root-directory project-resources)
+                             (gethash 'source-file project-resources))
+         :required-resources (gethash 'required-resources project-resources)
+         :deps (gethash 'deps project-resources)
+         :local-files (gethash 'local-files project-resources)
+         :symlinks (gethash 'symlinks project-resources)
+         :agenda-files (gethash 'agenda-files project-resources)
+         :workspaces (gethash 'workspaces project-resources))
+      nil)))
 
 (defun declarative-project--read-project-from-buffer (&optional buffername)
   "Return declarative-project defined by current buffer or BUFFERNAME."
   (with-current-buffer (or buffername (current-buffer))
     (declarative-project--read-project-from-string (buffer-string))))
-
-(defun declarative-project--read-project-from-string (&optional string)
-  "Return declarative-project defined in yaml STRING."
-  (let ((project-resources (condition-case err (yaml-parse-string (or string (buffer-string))
-                                                                  :null-object nil
-                                                                  :sequence-type 'list)
-                             (error (message "No valid yaml")
-                                         nil))))
-    (if project-resources
-        (progn
-          ;(message "Found valid project from string")
-          (make-declarative-project
-           :name (gethash 'name project-resources)
-           :root-directory (or (gethash 'root-directory project-resources)
-                               (gethash 'source-file project-resources))
-           :required-resources (gethash 'required-resources project-resources)
-           :deps (gethash 'deps project-resources)
-           :local-files (gethash 'local-files project-resources)
-           :symlinks (gethash 'symlinks project-resources)
-           :agenda-files (gethash 'agenda-files project-resources)
-           :workspaces (gethash 'workspaces project-resources)))
-      (progn
-        ;(message "Invalid project from string")
-        nil))))
 
 (defun declarative-project--read-project-from-file (source-file)
   "Return the declarative-project defined at SOURCE-FILE."
@@ -382,9 +409,9 @@ Any missing files will be created if declarative-project--persist-agenda-files."
                                   ;; NOTE: parsing the buffer with the src block begin/end
                                   ;; present might still work b/c yaml parsing handles it fine,
                                   ;; but we explicitly use the src block value here.
-                                  ;(message "Found source block for: %s" source-file)
+                                        ;(message "Found source block for: %s" source-file)
                                   (insert-file-contents path nil (- begin 1) end)
-                                  ;(message "Working with this yaml: \n%s" (buffer-string))
+                                        ;(message "Working with this yaml: \n%s" (buffer-string))
                                   (goto-char 0)
                                   (condition-case err (org-element-property :value (org-element-at-point))
                                     (error
@@ -401,6 +428,10 @@ Any missing files will be created if declarative-project--persist-agenda-files."
             (progn (message "No valid project at %s" project-string)
                    nil)))))))
 
+
+;; ----------------------------------------------------------------------------
+;; Mode Setup and core project installation behavior
+;; ----------------------------------------------------------------------------
 (defun declarative-project--install-project-from-file (&optional source-file)
   "Install a declared project from SOURCE-FILE or `current-buffer-file'."
   (let ((source-file (or source-file
