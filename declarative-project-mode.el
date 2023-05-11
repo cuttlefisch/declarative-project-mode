@@ -371,28 +371,33 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 ;; ----------------------------------------------------------------------------
 (defun declarative-project--project-string-from-source-link (source-link)
   "Return yaml body of project given its SOURCE-LINK."
-  (if-let* ((match-groups (declarative-project--source-linkp source-link))
-            (path (alist-get :path match-groups))
-            (begin (alist-get :begin match-groups))
-            (end (alist-get :end match-groups)))
-      (progn
-        ;; Pull capture groups from matches
-        ;; open buffer and insert src block contents from location
-        ;; NOTE: parsing the buffer with the src block begin/end
-        ;; present might still work b/c yaml parsing handles it fine,
-        ;; but we explicitly use the src block value here.
-                                        ;(message "Found source block for: %s" source-link)
-        (insert-file-contents path nil (- begin 1) end)
-                                        ;(message "Working with this yaml: \n%s" (buffer-string))
-        (goto-char 0)
-        (condition-case err (org-element-property :value (org-element-at-point))
-          (error
-           (message "No valid org element at point.")
-           "")))
-    (progn
-      (when (file-exists-p source-file)
-        (insert-file-contents source-file)
-        (buffer-string)))))
+  (save-excursion
+    (with-temp-buffer
+      (if-let* ((match-groups (declarative-project--source-linkp source-link))
+                (path (alist-get :path match-groups))
+                (begin (alist-get :begin match-groups))
+                (end (alist-get :end match-groups)))
+          (progn
+            ;; Pull capture groups from matches
+            ;; open buffer and insert src block contents from location
+            ;; NOTE: parsing the buffer with the src block begin/end
+            ;; present might still work b/c yaml parsing handles it fine,
+            ;; but we explicitly use the src block value here.
+            ;; (message "Found source block for: %s" source-link)
+            ;;(insert-file-contents path nil (- begin 1) end)
+            ;; (message "Working with this yaml: \n%s" (buffer-string))
+            (insert-file-contents path nil)
+            (goto-char begin)
+            ;; (message "at char %s" begin)
+            ;; (message "found element\n%s" (org-element-property :value (org-element-at-point)))
+            (condition-case err
+                (org-element-at-point)
+              (error (message "No valid org element at point.")
+               "")))
+        (progn
+          (when (file-exists-p source-file)
+            (insert-file-contents source-file)
+            (buffer-string)))))))
 
 (defun declarative-project--read-project-from-string (&optional string)
   "Return declarative-project defined in yaml STRING."
@@ -422,15 +427,15 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 
 (defun declarative-project--read-project-from-file (source-file)
   "Return the declarative-project defined at SOURCE-FILE."
-  (save-excursion
-    (with-temp-buffer
-      (let ((project-string (declarative-project--project-string-from-source-link source-file)))
-        (let ((project (or (declarative-project--read-project-from-string project-string) nil)))
-          (if (declarative-project-p project)
-              (progn (setf (declarative-project-source-file project) source-file)
-                     project)
-            (progn (message "No valid project at %s" project-string)
-                   nil)))))))
+  (let* ((project-string (declarative-project--project-string-from-source-link source-file))
+         (project (or (declarative-project--read-project-from-string project-string) nil)))
+    (if (declarative-project-p project)
+        (progn
+          (setf (declarative-project-source-file project) source-file)
+          project)
+      (progn
+        (message "No valid project at %s" project-string)
+        nil))))
 
 
 ;; ----------------------------------------------------------------------------
@@ -444,9 +449,9 @@ Any missing files will be created if declarative-project--persist-agenda-files."
      )
 
          (defun declarative-project--install-project (&optional project source-file)
-    "Step step through project spec & apply any blocks found."
-    (interactive)
-    (let* ((source-file (or source-file (expand-file-name "PROJECT.yaml" default-directory)))
+            "Step step through project spec & apply any blocks found."
+            (interactive)
+            (let* ((source-file (or source-file (expand-file-name "PROJECT.yaml" default-directory)))
          (project (or project
                       (declarative-project--read-project-from-file source-file)
                       (declarative-project--read-project-from-file (expand-file-name (buffer-file-name (current-buffer)))))))
@@ -465,8 +470,8 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     project))
 
          (defun declarative-project--mode-setup ()
-    "Load in cache, prune and handle agenda files."
-    (when declarative-project-mode
+            "Load in cache, prune and handle agenda files."
+            (when declarative-project-mode
     (message "Declarative Project Mode Enabled!")
     (setq declarative-project--cached-projects (declarative-project--read-cache))
     (warn "Found these projects boss:\n%s" declarative-project--cached-projects)
@@ -477,12 +482,12 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 
 ;;;###autoload
          (define-derived-mode declarative-project-mode yaml-mode
-    "Declarative Project mode."
-    :init-value nil
-    :lighter " DPM"
-    :global t
-    :group 'minor-modes
-    (declarative-project--mode-setup))
+            "Declarative Project mode."
+            :init-value nil
+            :lighter " DPM"
+            :global t
+            :group 'minor-modes
+            (declarative-project--mode-setup))
 
          (provide 'declarative-project-mode)
 ;;; declarative-project-mode.el ends here
