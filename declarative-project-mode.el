@@ -367,15 +367,18 @@ Any missing files will be created if declarative-project--persist-agenda-files."
                             (message "checking project at:\t%s" source-link)
                             (or (let* ((match-groups (declarative-project--source-linkp source-link))
                                        (path (alist-get :path match-groups))
-                                       (begin (alist-get :begin match-groups)))
+                                       (begin (alist-get :begin match-groups))
+                                       (found-org-element (declarative-project--org-element-at-source-link source-link)))
                                   ;; To remain in the cache
                                   ;;   - :path must be valid string
                                   ;;   - File must exist at :path
                                   ;;   - SOURCE-LINK :begin matches the begin property of the org-element
+                                  ;;   - Org element at SOURCE-LINK is a src-block
                                   ;;   - Source block at SOURCE-LINK must containvalid project
                                   (and (stringp path)
                                        (file-readable-p path)
-                                       (equal begin (org-element-property :begin (declarative-project--org-element-at-source-link source-link)))
+                                       (string= "src-block" (car found-org-element))
+                                       (equal begin (org-element-property :begin found-org-element))
                                        (declarative-project-p
                                         (declarative-project--project-from-source-link source-link))))
                                 ;; In this case source-link /should/ represent a file-path
@@ -488,6 +491,8 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (declarative-project--copy-local-files project)
     (declarative-project--create-symlinks project)
     (declarative-project--append-to-cache (declarative-project-source-link project))
+    (when declarative-project--auto-prune-cache
+      (declarative-project--prune-cache))
     (declarative-project--refresh-cache-from-file)
     (declarative-project--check-required-resources project)
     (declarative-project--rebuild-org-agenda)
