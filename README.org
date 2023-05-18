@@ -17,6 +17,15 @@ Currently supported behavior:
 There are two supported specification formats: a YAML spec file, or the same YAML
 specification within an org mode source block.
 
+** Emacs Configuration Changes
+With the ~use-package!~ macro:
+#+begin_src elisp
+(use-package! declarative-project-mode
+  :after org
+  :init
+  (declarative-project--mode-setup))
+#+end_src
+
 ** Plain YAML
 To install and manage a project in plain YAML:
 1. Follow ~Defining a Project~ to create the YAML spec file
