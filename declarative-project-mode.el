@@ -146,10 +146,10 @@ Capture groups:
         (block-begin (org-element-property :begin (org-element-context)))
         (block-end (org-element-property :end (org-element-context))))
 
-    ;; Default value for src block params are "no" for some fields
-    ;; ---
-    ;; Here we only create a source-link to the src block if there's no
-    ;; target for tangling.
+    ;; Default value for src block params are "no" for some fields --- Here we
+    ;; only create a source-link to the src block if there's no target for
+    ;; tangling. Otherwise, the source-link should point to the specified tangle
+    ;; target.
     (let ((source-link (if (string= "no" tangle-target)
                            ;; Create link to source block begin & end `absolute/path.org::begin-char:end-char'
                            (format "%s::%d:%s"
@@ -159,7 +159,7 @@ Capture groups:
       (with-temp-file (org-babel-temp-file "project-")
         (insert body)
         (let ((project (declarative-project--read-project-from-buffer)))
-          ;; Make sure we have the correct source file
+          ;; Make sure we have the correct source-link
           (setf (declarative-project-source-link project) source-link)
           (declarative-project--install-project project))))))
 
@@ -247,7 +247,7 @@ Capture groups:
               (dest (or (gethash 'dest file)
                         (file-name-nondirectory src)))
               (dest-path (concat root-dir "/" dest)))
-         (message "root-dir\t")
+         ;(message "root-dir\t")
          (cond
           ((file-directory-p src)
            (unless (file-directory-p dest-path)
@@ -360,50 +360,41 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 ;; /home/heimdall/RoamNotes/20230113170058-declarative_project_minor_mode.org::425:1059
 ;; /home/heimdall/RoamNotes/20230113170058-declarative_project_minor_mode.org::425:1065
 ;; Solution is to gather all
-(defun declarative-project--prune-cache ()
-  "Destrucively filter missing projects from cached file paths."
-    ;; First remove invalid definitions
-  (message "working with these cached projects:\n%s" declarative-project--cached-projects)
-    (message "new cache:\n%s" (cl-remove-if-not (lambda (source-link)
-                                                  (message "checking source file:\t%s" source-link)
-                                                  (or (let* ((match-groups (declarative-project--source-linkp source-link))
-                                                             (path (alist-get :path match-groups)))
-                                                        (message "found match groups:\n%s" match-groups)
-                                                        (message "for project path:\n%s" path)
-                                                        (and (file-readable-p path)
-                                                             (declarative-project-p
-                                                              (declarative-project--read-project-from-source-link source-link))))
-                                                      (file-exists-p source-link) ))
-                                                declarative-project--cached-projects))
-    ;; (setq declarative-project--cached-projects
-    ;;       (cl-remove-if-not (lambda (source-link)
-    ;;                           (message "checking source file:\t%s" source-link)
-    ;;                           (or (let* ((match-groups (declarative-project--source-linkp source-link))
-    ;;                                      (path (alist-get :path match-groups)))
-    ;;                                 (message "found match groups:\n%s" match-groups)
-    ;;                                 (message "for project path:\n%s" path)
-    ;;                                 ;; To remain in the cache
-    ;;                                 ;; - A) :path must be valid string
-    ;;                                 ;; - B) File must exist at :path
-    ;;                                 ;; - C) source block at :begin :end within file at :path must be valid project
-    ;;                                 (and (stringp path)  ;; (A)
-    ;;                                      (file-exists-p path) ;; (B)
-    ;;                                      ;; (C)
-    ;;                                      (declarative-project-p
-    ;;                                       (declarative-project--read-project-from-source-link source-link))))
-    ;;                               ;; In this case source-link /should/ represent a file-path
-    ;;                               (file-exists-p source-link)))
-    ;;                         declarative-project--cached-projects))
-    ;; ;; BUG *NEXT* remove duplicate entries, where the :begin attrs match. Check
-    ;; ;; the src at that point and find the correct :end, then update the cache.
-    ;; ;;
-    ;; ;; - For each unique combination of path & :begin
-    ;; ;;          collect all entries in cache with that path
-    ;; ;;          use temp buffer to find correct :end value
-    ;; ;;          cache new entry with correct path::begin:end
-    ;; (declarative-project--save-cache)
-    ;; (cl-set-difference prev-cache declarative-project--cached-projects)
-    )
+(defun declarative-project--prune-cache (&optional cache-file)
+  "Destrucively filter missing and invalid projects from CACHE-FILE paths."
+  ;; First remove all source-links pointing to invalid project source definitions
+  (let ((cache-file (or cache-file
+                        declarative-project--cache-file)))
+  (declarative-project--refresh-cache-from-file cache-file)
+  ;(message "working with these cached projects:\n%s" declarative-project--cached-projects)
+  (setq declarative-project--cached-projects
+        (cl-remove-if-not (lambda (source-link)
+                            (message "checking project at:\t%s" source-link)
+                            (or (let* ((match-groups (declarative-project--source-linkp source-link))
+                                       (path (alist-get :path match-groups)))
+                                  ;; (message "found match groups:\n%s" match-groups)
+                                  ;; (message "for project path:\n%s" path)
+                                  ;; To remain in the cache
+                                  ;;   A) :path must be valid string
+                                  ;;   B) File must exist at :path
+                                  ;;   C) source block at SOURCE-LINK must be valid project
+                                  (and (stringp path)
+                                       (file-readable-p path)
+                                       (declarative-project-p
+                                        (declarative-project--read-project-from-source-link source-link))))
+                                ;; In this case source-link /should/ represent a file-path
+                                (file-exists-p source-link)))
+                          declarative-project--cached-projects))
+  ;; ;; BUG *NEXT* remove duplicate entries, where the :begin attrs match. Check
+  ;; ;; the src at that point and find the correct :end, then update the cache.
+  ;; ;;
+  ;; ;; - For each unique combination of path & :begin
+  ;; ;;          collect all entries in cache with that path
+  ;; ;;          use temp buffer to find correct :end value
+  ;; ;;          cache new entry with correct path::begin:end
+  (declarative-project--save-cache cache-file)
+  ;; (cl-set-difference prev-cache declarative-project--cached-projects)
+  ))
 
 
 ;; ----------------------------------------------------------------------------
@@ -436,13 +427,13 @@ Any missing files will be created if declarative-project--persist-agenda-files."
             ;; (message "at char %s" begin)
             ;; (message "found element\n%s" (org-element-property :value (org-element-at-point)))
             )
-          (when (file-exists-p source-link)
-            (insert-file-contents source-link)
-            (goto-char (point-min))))
+        (when (file-exists-p source-link)
+          (insert-file-contents source-link)
+          (goto-char (point-min))))
 
       (condition-case err
           (progn
-            (message "Found org element from source link:\n%s" (org-element-at-point))
+            ;(message "Found org element from source link:\n%s" (org-element-at-point))
             (org-element-at-point))
         (error (message "No valid org element at point.")
                "")))))
@@ -480,9 +471,9 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   "Return the declarative-project defined at SOURCE-LINK."
   (let* ((project-string (declarative-project--project-string-from-source-link source-link))
          (project (or (declarative-project--read-project-from-string project-string) nil)))
-    (message "Checking project from source-link:\n%s" source-link)
-    (message "Checking project-string:\n%s" project-string)
-    (message "Valid project?\t%s" (declarative-project-p project))
+    ;; (message "Checking project from source-link:\n%s" source-link)
+    ;; (message "Checking project-string:\n%s" project-string)
+    ;; (message "Valid project?\t%s" (declarative-project-p project))
     (if (declarative-project-p project)
         (progn
           (setf (declarative-project-source-link project) source-link)
@@ -529,10 +520,9 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   "Load in cache, prune and handle agenda files."
   (message "Declarative Project Mode Enabled!")
   (declarative-project--refresh-cache-from-file)
-  (message "Found these projects boss:\n%s" declarative-project--cached-projects)
+                                        ;(message "Found these projects boss:\n%s" declarative-project--cached-projects)
   (when declarative-project--auto-prune-cache
-    (message "WARNING :: Pruned the following projects from cache:\n%s"
-             (mapconcat 'identity (declarative-project--prune-cache) "\n\t")))
+    (declarative-project--prune-cache))
   (declarative-project--rebuild-org-agenda))
 
 ;;;###autoload
