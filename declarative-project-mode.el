@@ -142,7 +142,7 @@ Capture groups:
 (defun org-babel-execute:declarative-project (body params)
   "Execute command with BODY and PARAMS from src block."
   ;; Prioritize targets of yaml block over source org file
-  (let ((source-file (cdr (assoc :tangle params)))
+  (let ((tangle-target (cdr (assoc :tangle params)))
         (block-begin (org-element-property :begin (org-element-context)))
         (block-end (org-element-property :end (org-element-context))))
 
@@ -150,11 +150,11 @@ Capture groups:
     ;; ---
     ;; Here we only create a source-link to the src block if there's no
     ;; target for tangling.
-    (let ((source-link (if (string= "no" source-file)
+    (let ((source-link (if (string= "no" tangle-target)
                            ;; Create link to source block begin & end `absolute/path.org::begin-char:end-char'
                            (format "%s::%d:%s"
                                    (buffer-file-name) block-begin block-end)
-                         source-file)))
+                         tangle-target)))
       ;; Install the project
       (with-temp-file (org-babel-temp-file "project-")
         (insert body)
@@ -283,9 +283,9 @@ Capture groups:
 (defun declarative-project--rebuild-org-agenda ()
   "Add any valid agenda files from cached projects to org-agenda-files.
 Any missing files will be created if declarative-project--persist-agenda-files."
-  (seq-map (lambda (source-file)
-             (when (file-exists-p source-file)
-               (let ((project (declarative-project--read-project-from-file source-file)))
+  (seq-map (lambda (source-link)
+             (when (file-exists-p source-link)
+               (let ((project (declarative-project--read-project-from-source-link source-link)))
                  (when (declarative-project-p project)
                    (seq-map (lambda (agenda-file)
                               (let* ((root-dir (declarative-project-root-directory project))
@@ -359,58 +359,62 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 ;; link is unique like so:
 ;; /home/heimdall/RoamNotes/20230113170058-declarative_project_minor_mode.org::425:1059
 ;; /home/heimdall/RoamNotes/20230113170058-declarative_project_minor_mode.org::425:1065
+;; Solution is to gather all
 (defun declarative-project--prune-cache ()
   "Destrucively filter missing projects from cached file paths."
-  (let ((prev-cache declarative-project--cached-projects))
     ;; First remove invalid definitions
-    (message "new cache:\n%s" (cl-remove-if-not (lambda (source-file)
-                                                  (message "checking source file:\t%s" source-file)
-                                                  (or (let* ((match-groups (declarative-project--source-linkp source-file))
+  (message "working with these cached projects:\n%s" declarative-project--cached-projects)
+    (message "new cache:\n%s" (cl-remove-if-not (lambda (source-link)
+                                                  (message "checking source file:\t%s" source-link)
+                                                  (or (let* ((match-groups (declarative-project--source-linkp source-link))
                                                              (path (alist-get :path match-groups)))
                                                         (message "found match groups:\n%s" match-groups)
                                                         (message "for project path:\n%s" path)
-                                                        ;; To remain in the cache
-                                                        ;; - A) :path must be valid string
-                                                        ;; - B) File must exist at :path
-                                                        ;; - C) source block at :begin :end within file at :path must be valid project
-                                                        (and (stringp path)  ;; (A)
-                                                             (file-exists-p path) ;; (B)
-                                                             ;; (C)
+                                                        (and (file-readable-p path)
                                                              (declarative-project-p
-                                                              (declarative-project--read-project-from-file source-file))))
-                                                      (file-exists-p source-file) ))
+                                                              (declarative-project--read-project-from-source-link source-link))))
+                                                      (file-exists-p source-link) ))
                                                 declarative-project--cached-projects))
-    (setq declarative-project--cached-projects
-          (cl-remove-if-not (lambda (source-file)
-                              (or (file-exists-p source-file)
-                                  (let* ((match-groups (declarative-project--source-linkp source-file))
-                                         (path (alist-get :path match-groups)))
-                                    (message "found match groups:\n%s" match-groups)
-                                    (message "for project path:\n%s" path)
-                                    ;; To remain in the cache
-                                    ;; - A) :path must be valid string
-                                    ;; - B) File must exist at :path
-                                    ;; - C) source block at :begin :end within file at :path must be valid project
-                                    (and (stringp path)  ;; (A)
-                                         (file-exists-p path) ;; (B)
-                                         ;; (C)
-                                         (declarative-project-p
-                                          (declarative-project--read-project-from-source-link source-file))))))
-                            declarative-project--cached-projects))
-    ;; TODO Next remove duplicate entries,
-    ;; - For each unique combination of path & :begin
-    ;;          collect all entries in cache with that path
-    ;;          use temp buffer to find correct :end value
-    ;;          cache new entry with correct path::begin:end
-    (declarative-project--save-cache)
+    ;; (setq declarative-project--cached-projects
+    ;;       (cl-remove-if-not (lambda (source-link)
+    ;;                           (message "checking source file:\t%s" source-link)
+    ;;                           (or (let* ((match-groups (declarative-project--source-linkp source-link))
+    ;;                                      (path (alist-get :path match-groups)))
+    ;;                                 (message "found match groups:\n%s" match-groups)
+    ;;                                 (message "for project path:\n%s" path)
+    ;;                                 ;; To remain in the cache
+    ;;                                 ;; - A) :path must be valid string
+    ;;                                 ;; - B) File must exist at :path
+    ;;                                 ;; - C) source block at :begin :end within file at :path must be valid project
+    ;;                                 (and (stringp path)  ;; (A)
+    ;;                                      (file-exists-p path) ;; (B)
+    ;;                                      ;; (C)
+    ;;                                      (declarative-project-p
+    ;;                                       (declarative-project--read-project-from-source-link source-link))))
+    ;;                               ;; In this case source-link /should/ represent a file-path
+    ;;                               (file-exists-p source-link)))
+    ;;                         declarative-project--cached-projects))
+    ;; ;; BUG *NEXT* remove duplicate entries, where the :begin attrs match. Check
+    ;; ;; the src at that point and find the correct :end, then update the cache.
+    ;; ;;
+    ;; ;; - For each unique combination of path & :begin
+    ;; ;;          collect all entries in cache with that path
+    ;; ;;          use temp buffer to find correct :end value
+    ;; ;;          cache new entry with correct path::begin:end
+    ;; (declarative-project--save-cache)
     ;; (cl-set-difference prev-cache declarative-project--cached-projects)
-    ))
+    )
 
 
 ;; ----------------------------------------------------------------------------
 ;; Utilities for parsing projects
 ;; ----------------------------------------------------------------------------
 (defun declarative-project--project-string-from-source-link (source-link)
+  "Return the :value of the org-element at SOURCE-LINK."
+  (org-element-property :value (declarative-project--project-from-source-link source-link)))
+
+
+(defun declarative-project--project-from-source-link (source-link)
   "Return yaml body of project given its SOURCE-LINK."
   (save-excursion
     (with-temp-buffer
@@ -428,17 +432,23 @@ Any missing files will be created if declarative-project--persist-agenda-files."
             ;;(insert-file-contents path nil (- begin 1) end)
             ;; (message "Working with this yaml: \n%s" (buffer-string))
             (insert-file-contents path nil)
-            (goto-char begin)
+            (goto-char (+ begin 1))
             ;; (message "at char %s" begin)
             ;; (message "found element\n%s" (org-element-property :value (org-element-at-point)))
-            (condition-case err
-                (org-element-at-point)
-              (error (message "No valid org element at point.")
-                     "")))
-        (progn
-          (when (file-exists-p source-file)
-            (insert-file-contents source-file)
-            (buffer-string)))))))
+            )
+          (when (file-exists-p source-link)
+            (insert-file-contents source-link)
+            (goto-char (point-min))))
+
+      (condition-case err
+          (progn
+            (message "Found org element from source link:\n%s" (org-element-at-point))
+            (org-element-at-point))
+        (error (message "No valid org element at point.")
+               "")))))
+
+
+
 
 (defun declarative-project--read-project-from-string (&optional string)
   "Return declarative-project defined in yaml STRING."
@@ -452,7 +462,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
         (make-declarative-project
          :name (gethash 'name project-resources)
          :root-directory (or (gethash 'root-directory project-resources)
-                             (gethash 'source-file project-resources))
+                             (gethash 'source-link project-resources))
          :required-resources (gethash 'required-resources project-resources)
          :deps (gethash 'deps project-resources)
          :local-files (gethash 'local-files project-resources)
@@ -468,7 +478,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
 
 (defun declarative-project--read-project-from-source-link (source-link)
   "Return the declarative-project defined at SOURCE-LINK."
-  (let* ((project-string (alist-get :value (declarative-project--project-string-from-source-link source-link)))
+  (let* ((project-string (declarative-project--project-string-from-source-link source-link))
          (project (or (declarative-project--read-project-from-string project-string) nil)))
     (message "Checking project from source-link:\n%s" source-link)
     (message "Checking project-string:\n%s" project-string)
