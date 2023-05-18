@@ -100,16 +100,17 @@ Capture groups:
   https:// gitlab.com/  gitlab-org/  gitlab-docs")
 
 (defvar declarative-project-source-link-link-regex-groups
-  "\\(^\\/.*\\)::\\([0-9]+\\):\\([0-9]+\\)$"
-  "Regular expression to match source file links matching filepath::begin:end.
+  ;; "\\(^\\/.*\\)::\\([0-9]+\\):\\([0-9]+\\)$"
+  "\\(^\\/.*\\)::\\([0-9]+\\)$"
+  "Regular expression to match source file links matching filepath::begin.
 
-`begin' and `end' are buffer positions for the beginning and end of an
-org source block of type `declarative-project'.
+`begin' is the buffer position for the beginning of an org source
+block of type `declarative-project'.
 
 Capture groups:
 ---------------
-1                                                                    2      3
-/home/username/RoamNotes/99999999999999-declared-projectfile.org ::  420 :  1085")
+1                                                                    2
+/home/username/RoamNotes/99999999999999-declared-projectfile.org ::  420")
 
 (defcustom declarative-project--apply-treemacs-workspaces-hook nil
   "Hooks to run whenever the treemacs-workspaces are applied."
@@ -144,16 +145,19 @@ Capture groups:
   ;; Prioritize targets of yaml block over source org file
   (let ((tangle-target (cdr (assoc :tangle params)))
         (block-begin (org-element-property :begin (org-element-context)))
-        (block-end (org-element-property :end (org-element-context))))
+        ;(block-end (org-element-property :end (org-element-context)))
+        )
 
     ;; Default value for src block params are "no" for some fields --- Here we
     ;; only create a source-link to the src block if there's no target for
     ;; tangling. Otherwise, the source-link should point to the specified tangle
     ;; target.
     (let ((source-link (if (string= "no" tangle-target)
-                           ;; Create link to source block begin & end `absolute/path.org::begin-char:end-char'
-                           (format "%s::%d:%s"
-                                   (buffer-file-name) block-begin block-end)
+                           ;; Create link to source block file and index
+                           ;; position of starting char,
+                           ;; like`absolute/path.org::begin-char'
+                           (format "%s::%d"
+                                   (buffer-file-name) block-begin)
                          tangle-target)))
       ;; Install the project
       (with-temp-file (org-babel-temp-file "project-")
@@ -285,7 +289,7 @@ Capture groups:
 Any missing files will be created if declarative-project--persist-agenda-files."
   (seq-map (lambda (source-link)
              (when (file-exists-p source-link)
-               (let ((project (declarative-project--read-project-from-source-link source-link)))
+               (let ((project (declarative-project--project-from-source-link source-link)))
                  (when (declarative-project-p project)
                    (seq-map (lambda (agenda-file)
                               (let* ((root-dir (declarative-project-root-directory project))
@@ -309,7 +313,8 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (when (string-match declarative-project-source-link-link-regex-groups link)
       `((:path . ,(match-string 1 link))
         (:begin . ,(string-to-number (match-string 2 link)))
-        (:end . ,(string-to-number (match-string 3 link)))))))
+        ;(:end . ,(string-to-number (match-string 3 link)))
+        ))))
 
 (defun declarative-project--refresh-cache-from-file (&optional cache-file)
   "Update `declarative-project--cached-projects' from cache at CACHE-FILE."
@@ -347,99 +352,74 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   "Append SOURCE-LINK to CACHE-FILE containing declared project soure-links."
   (let ((cache-file (or cache-file
                         declarative-project--cache-file)))
-    ;; BUG this append-to-file call creates duplicate cache entries if the :end of
-    ;; the link is unique like so:
-    ;; /home/heimdall/RoamNotes/20230113170058-declarative_project_minor_mode.org::425:1059
-    ;; /home/heimdall/RoamNotes/20230113170058-declarative_project_minor_mode.org::425:1065
     (append-to-file (format "%s\n" source-link) nil cache-file)
     (add-to-list 'declarative-project--cached-projects source-link)
     (declarative-project--save-cache)))
 
-;; BUG cl-remove-if-not lambda allows duplicate cache entries if the :end of the
-;; link is unique like so:
-;; /home/heimdall/RoamNotes/20230113170058-declarative_project_minor_mode.org::425:1059
-;; /home/heimdall/RoamNotes/20230113170058-declarative_project_minor_mode.org::425:1065
-;; Solution is to gather all
 (defun declarative-project--prune-cache (&optional cache-file)
   "Destrucively filter missing and invalid projects from CACHE-FILE paths."
-  ;; First remove all source-links pointing to invalid project source definitions
   (let ((cache-file (or cache-file
                         declarative-project--cache-file)))
   (declarative-project--refresh-cache-from-file cache-file)
-  ;(message "working with these cached projects:\n%s" declarative-project--cached-projects)
   (setq declarative-project--cached-projects
-        (cl-remove-if-not (lambda (source-link)
+        ;; Only preserve unique source-links matching valid cache criteria.
+        (delete-dups (cl-remove-if-not (lambda (source-link)
                             (message "checking project at:\t%s" source-link)
                             (or (let* ((match-groups (declarative-project--source-linkp source-link))
-                                       (path (alist-get :path match-groups)))
-                                  ;; (message "found match groups:\n%s" match-groups)
-                                  ;; (message "for project path:\n%s" path)
+                                       (path (alist-get :path match-groups))
+                                       (begin (alist-get :begin match-groups)))
                                   ;; To remain in the cache
-                                  ;;   A) :path must be valid string
-                                  ;;   B) File must exist at :path
-                                  ;;   C) source block at SOURCE-LINK must be valid project
+                                  ;;   - :path must be valid string
+                                  ;;   - File must exist at :path
+                                  ;;   - SOURCE-LINK :begin matches the begin property of the org-element
+                                  ;;   - Source block at SOURCE-LINK must containvalid project
                                   (and (stringp path)
                                        (file-readable-p path)
+                                       (equal begin (org-element-property :begin (declarative-project--org-element-at-source-link source-link)))
                                        (declarative-project-p
-                                        (declarative-project--read-project-from-source-link source-link))))
+                                        (declarative-project--project-from-source-link source-link))))
                                 ;; In this case source-link /should/ represent a file-path
                                 (file-exists-p source-link)))
-                          declarative-project--cached-projects))
-  ;; ;; BUG *NEXT* remove duplicate entries, where the :begin attrs match. Check
-  ;; ;; the src at that point and find the correct :end, then update the cache.
-  ;; ;;
-  ;; ;; - For each unique combination of path & :begin
-  ;; ;;          collect all entries in cache with that path
-  ;; ;;          use temp buffer to find correct :end value
-  ;; ;;          cache new entry with correct path::begin:end
-  (declarative-project--save-cache cache-file)
-  ;; (cl-set-difference prev-cache declarative-project--cached-projects)
-  ))
+                          declarative-project--cached-projects)))
+  (declarative-project--save-cache cache-file)))
 
 
 ;; ----------------------------------------------------------------------------
 ;; Utilities for parsing projects
 ;; ----------------------------------------------------------------------------
-(defun declarative-project--project-string-from-source-link (source-link)
-  "Return the :value of the org-element at SOURCE-LINK."
-  (org-element-property :value (declarative-project--project-from-source-link source-link)))
+(defun declarative-project--org-element-at-source-link (source-link)
+  "Return the org-element at SOURCE-LINK."
+  (let* ((project-org-element)
+         (match-groups (declarative-project--source-linkp source-link))
+         (path (alist-get :path match-groups))
+         (begin (alist-get :begin match-groups)))
+    (when (and (stringp path) (numberp begin))
+    (save-excursion
+      (with-temp-buffer
+        (insert-file-contents path nil)
+        (goto-char (+ begin 1))
+        (setq project-org-element
+              (condition-case err
+                  (org-element-at-point)
+                (error (message "No valid org element at point.")
+                       nil))))))
+    project-org-element))
 
+(defun declarative-project--project-string-from-source-link (source-link)
+  "Return the YAML body of project defined at SOURCE-LINK."
+  (if-let ((found-org-elemenent (declarative-project--org-element-at-source-link source-link)))
+      (org-element-property :value found-org-elemenent)
+    (when (file-exists-p source-link)
+      (save-excursion
+        (with-temp-buffer
+          (insert-file-contents source-link)
+          (goto-char (point-min))
+          (buffer-string))))))
 
 (defun declarative-project--project-from-source-link (source-link)
-  "Return yaml body of project given its SOURCE-LINK."
-  (save-excursion
-    (with-temp-buffer
-      (if-let* ((match-groups (declarative-project--source-linkp source-link))
-                (path (alist-get :path match-groups))
-                (begin (alist-get :begin match-groups))
-                (end (alist-get :end match-groups)))
-          (progn
-            ;; Pull capture groups from matches
-            ;; open buffer and insert src block contents from location
-            ;; NOTE: parsing the buffer with the src block begin/end
-            ;; present might still work b/c yaml parsing handles it fine,
-            ;; but we explicitly use the src block value here.
-            ;; (message "Found source block for: %s" source-link)
-            ;;(insert-file-contents path nil (- begin 1) end)
-            ;; (message "Working with this yaml: \n%s" (buffer-string))
-            (insert-file-contents path nil)
-            (goto-char (+ begin 1))
-            ;; (message "at char %s" begin)
-            ;; (message "found element\n%s" (org-element-property :value (org-element-at-point)))
-            )
-        (when (file-exists-p source-link)
-          (insert-file-contents source-link)
-          (goto-char (point-min))))
-
-      (condition-case err
-          (progn
-            ;(message "Found org element from source link:\n%s" (org-element-at-point))
-            (org-element-at-point))
-        (error (message "No valid org element at point.")
-               "")))))
-
-
-
+  "Return project struct found at SOURCE-LINK."
+  (declarative-project--read-project-from-string
+   (declarative-project--project-string-from-source-link source-link)))
 
 (defun declarative-project--read-project-from-string (&optional string)
   "Return declarative-project defined in yaml STRING."
@@ -491,7 +471,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   (let ((source-link (or source-link
                          (buffer-file-name))))
     (declarative-project--install-project
-     (declarative-project--read-project-from-source-link source-link))))
+     (declarative-project--project-from-source-link source-link))))
 
 
 (defun declarative-project--install-project (&optional project source-link)
@@ -499,8 +479,8 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   (interactive)
   (let* ((source-link (or source-link (expand-file-name "PROJECT.yaml" default-directory)))
          (project (or project
-                      (declarative-project--read-project-from-source-link source-link)
-                      (declarative-project--read-project-from-source-link (expand-file-name (buffer-file-name (current-buffer)))))))
+                      (declarative-project--project-from-source-link source-link)
+                      (declarative-project--project-from-source-link (expand-file-name (buffer-file-name (current-buffer)))))))
     ;; Refresh cache just in case, seems to fix startup issue.
     (declarative-project--refresh-cache-from-file)
     (declarative-project--prep-target project)
