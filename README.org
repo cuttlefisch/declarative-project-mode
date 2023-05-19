@@ -23,6 +23,10 @@ With the ~use-package!~ macro:
 (use-package! declarative-project-mode
   :after org
   :init
+  ;; Optionally enable auto-prune to remove invalid projects without prompt when:
+  ;; - Initializing the mode's setup
+  ;; - Installing a new project
+  (setq declarative-project--auto-prune-cache t) ;; default value is `nil'
   (declarative-project--mode-setup))
 #+end_src
 
