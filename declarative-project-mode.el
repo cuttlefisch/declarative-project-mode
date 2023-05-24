@@ -396,7 +396,7 @@ Any missing files will be created if declarative-project--persist-agenda-files."
          (match-groups (declarative-project--source-linkp source-link))
          (path (alist-get :path match-groups))
          (begin (alist-get :begin match-groups)))
-    (when (and (stringp path) (numberp begin))
+    (when (and (file-readable-p path) (numberp begin))
     (save-excursion
       (with-temp-buffer
         (insert-file-contents path nil)
