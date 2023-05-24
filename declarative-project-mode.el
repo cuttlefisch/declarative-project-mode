@@ -5,8 +5,7 @@
 ;; Author: Hayden Stanko <hayden@cuttle.codes>
 ;; Maintainer: Hayden Stanko <hayden@cuttle.codes>
 ;; Created: January 13, 2023
-;; Modified: May 11, 2023
-;; Version: 0.0.6
+;; Version: 0.0.7
 ;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
 ;; Package-Requires: ((emacs "27.1") (ghub "3.5.1") (treemacs "2.10") (yaml-mode "0.0.15") (yaml "0.5.1"))
@@ -26,11 +25,7 @@
 ;;
 ;;; Commentary:
 ;;
-;; Declarative Project mode is a minor mode for managing project resources. The
-;; mode is triggered by visiting a directory containing a PROJECT.yaml file. The
-;; PROJECT.yaml file should be in yaml format and may contain the following
-;; fields "name", "required-resources", "agenda-files", "deps", "local-files",
-;; "symlinks", "treemacs-workspaces".
+;; Declarative Project mode is a minor mode for managing project resources.
 ;;
 ;; Projects are cached in user-emacs-directory. The cache updates org agenda
 ;; with any declared agenda files from the cache upon startup. Users can
