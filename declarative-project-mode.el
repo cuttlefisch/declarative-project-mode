@@ -42,6 +42,7 @@
 (require 'ob)
 (require 'ob-eval)
 (require 'org)
+(require 'org-element)
 
 
 ;; ----------------------------------------------------------------------------
@@ -229,13 +230,17 @@ Capture groups:
                        (vc-clone src 'Git (expand-file-name dest-path))))))
                project-deps))))
 
-;; REVIEW is this still a problem?
-;; TODO this fails if you try
+;; REVIEW How to handle case where users install from current directory to the
+;; root dir, like so:
+;;
 ;; local-files:
 ;;   - src: README.org
 ;;     dest: README.org
 ;; required-resources:
 ;;   - README.org
+;;
+;; This installs the `README.org' from the project definition file's current
+;; dir, to `root-dir/README.org', but this isn't super clear
 (defun declarative-project--copy-local-files (project)
   "Copy over any local files in PROJECT."
   (when-let ((local-files (declarative-project-local-files project)))
@@ -250,12 +255,9 @@ Capture groups:
          (cond
           ((file-directory-p src)
            (unless (file-directory-p dest-path)
-             (copy-directory src
-                             dest-path
-                             t t t)))
+             (copy-directory src dest-path t t t)))
           ((file-exists-p src)
-           (copy-file src dest-path
-                      t))
+           (copy-file src dest-path t))
           (t
            (warn "No such file or directory:\t%s" src)))))
      local-files)))
@@ -308,7 +310,6 @@ Any missing files will be created if declarative-project--persist-agenda-files."
     (when (string-match declarative-project-source-link-link-regex-groups link)
       `((:path . ,(match-string 1 link))
         (:begin . ,(string-to-number (match-string 2 link)))
-        ;(:end . ,(string-to-number (match-string 3 link)))
         ))))
 
 (defun declarative-project--refresh-cache-from-file (&optional cache-file)
@@ -358,27 +359,29 @@ Any missing files will be created if declarative-project--persist-agenda-files."
   (declarative-project--refresh-cache-from-file cache-file)
   (setq declarative-project--cached-projects
         ;; Only preserve unique source-links matching valid cache criteria.
-        (delete-dups (cl-remove-if-not (lambda (source-link)
-                            (message "checking project at:\t%s" source-link)
-                            (or (let* ((match-groups (declarative-project--source-linkp source-link))
-                                       (path (alist-get :path match-groups))
-                                       (begin (alist-get :begin match-groups))
-                                       (found-org-element (declarative-project--org-element-at-source-link source-link)))
-                                  ;; To remain in the cache
-                                  ;;   - :path must be valid string
-                                  ;;   - File must exist at :path
-                                  ;;   - SOURCE-LINK :begin matches the begin property of the org-element
-                                  ;;   - Org element at SOURCE-LINK is a src-block
-                                  ;;   - Source block at SOURCE-LINK must containvalid project
-                                  (and (stringp path)
-                                       (file-readable-p path)
-                                       (string= "src-block" (car found-org-element))
-                                       (equal begin (org-element-property :begin found-org-element))
-                                       (declarative-project-p
-                                        (declarative-project--project-from-source-link source-link))))
-                                ;; In this case source-link /should/ represent a file-path
-                                (file-exists-p source-link)))
-                          declarative-project--cached-projects)))
+        (delete-dups
+         (cl-remove-if-not
+          (lambda (source-link)
+            (message "checking project at:\t%s" source-link)
+            (or (let* ((match-groups (declarative-project--source-linkp source-link))
+                       (path (alist-get :path match-groups))
+                       (begin (alist-get :begin match-groups))
+                       (found-org-element (declarative-project--org-element-at-source-link source-link)))
+                  ;; To remain in the cache
+                  ;;   - :path must be valid string
+                  ;;   - File must exist at :path
+                  ;;   - SOURCE-LINK :begin matches the begin property of the org-element
+                  ;;   - Org element at SOURCE-LINK is a src-block
+                  ;;   - Source block at SOURCE-LINK must containvalid project
+                  (and (stringp path)
+                       (file-readable-p path)
+                       (string= "src-block" (car found-org-element))
+                       (equal begin (org-element-property :begin found-org-element))
+                       (declarative-project-p
+                        (declarative-project--project-from-source-link source-link))))
+                ;; In this case source-link /should/ represent a file-path
+                (file-exists-p source-link)))
+          declarative-project--cached-projects)))
   (declarative-project--save-cache cache-file)))
 
 
@@ -392,15 +395,15 @@ Any missing files will be created if declarative-project--persist-agenda-files."
          (path (alist-get :path match-groups))
          (begin (alist-get :begin match-groups)))
     (when (and (file-readable-p path) (numberp begin))
-    (save-excursion
-      (with-temp-buffer
-        (insert-file-contents path nil)
-        (goto-char (+ begin 1))
-        (setq project-org-element
-              (condition-case err
-                  (org-element-at-point)
-                (error (message "No valid org element at point.")
-                       nil))))))
+      (save-excursion
+        (with-temp-buffer
+          (insert-file-contents path nil)
+          (goto-char (+ begin 1))
+          (setq project-org-element
+                (condition-case err
+                    (org-element-at-point)
+                  (error (message "No valid org element at point.")
+                         nil))))))
     project-org-element))
 
 (defun declarative-project--project-string-from-source-link (source-link)
