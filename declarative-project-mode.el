@@ -5,9 +5,9 @@
 ;; Author: Hayden Stanko <hayden@cuttle.codes>
 ;; Maintainer: Hayden Stanko <hayden@cuttle.codes>
 ;; Created: January 13, 2023
-;; Modified: January 15, 2023
-;; Version: 0.1.0
-;; Keywords: project management, dependency management, declarative syntax, emacs minor-mode.
+;; Modified: March 15, 2026
+;; Version: 0.2.0
+;; Keywords: convenience, tools, project
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
 ;; Package-Requires: ((emacs "28.1") (yaml "0.5.1"))
 ;;
