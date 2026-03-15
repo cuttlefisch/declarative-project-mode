@@ -51,9 +51,15 @@ treemacs-workspaces:
 {
   "project-name": "Declarative Project Mode",
   "required-resources": ["README.org"],
-  "project-deps": [],
-  "project-local-files": [],
-  "project-copy-files": [],
+  "deps": [
+    {"src": "git@github.com:user/repo.git", "dest": "repo"}
+  ],
+  "local-files": [
+    {"src": "/path/to/file", "dest": "local-copy"}
+  ],
+  "symlinks": [
+    {"targ": "/path/to/target", "link": "my-link"}
+  ],
   "treemacs-workspaces": ["my_second_workspace", "my_workspace"]
 }
 #+end_src
@@ -61,6 +67,32 @@ The mode can be activated by visiting a file in the project directory with the .
 file or by running (declarative-project-mode 1) in the project directory.
 
 *Install the project* by running "C-c C-c i" from the ~.project~ file.
+
+* Org-Babel Integration
+
+You can embed project specs directly in org files as src blocks:
+
+#+begin_example
+#+begin_src declarative-project :dir ~/my-project
+project-name: "My Project"
+deps:
+  - src: git@github.com:user/repo.git
+    dest: repo
+symlinks:
+  - targ: ~/notes/my-project.org
+    link: docs/notes.org
+#+end_src
+#+end_example
+
+Execute with ~C-c C-c~ on the src block.
+
+To enable, add to your config:
+#+begin_src emacs-lisp
+(add-to-list 'org-babel-load-languages '(declarative-project . t))
+(org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
+#+end_src
+
+The ~:dir~ header argument sets the project root directory (defaults to ~default-directory~).
 
 * Noteworthy Features
 ** Treemacs Workspace Assignment
