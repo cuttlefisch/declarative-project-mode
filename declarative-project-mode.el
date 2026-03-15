@@ -136,7 +136,7 @@ Functions receive a single argument: the project-resources hash table.")
              (full-link (expand-file-name link)))
         (if (not (file-exists-p targ))
             (warn "No such file or directory:\t%s" targ)
-          (make-directory (file-name-parent-directory full-link) t)
+          (make-directory (file-name-directory full-link) t)
           (message "Creating symlink %s -> %s" link targ)
           (make-symbolic-link targ full-link t))))))
 
