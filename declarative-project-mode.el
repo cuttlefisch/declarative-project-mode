@@ -69,8 +69,9 @@ Functions receive a single argument: the project-resources hash table.")
 
 (defun declarative-project-root-directory (project-resources)
   "Return the project root directory from PROJECT-RESOURCES."
-  (when-let ((pf (gethash 'project-file project-resources)))
-    (file-name-directory pf)))
+  (or (gethash 'project-root project-resources)
+      (when-let ((pf (gethash 'project-file project-resources)))
+        (file-name-directory pf))))
 
 (defun declarative-project-name (project-resources)
   "Return the project name from PROJECT-RESOURCES."
@@ -142,7 +143,7 @@ Functions receive a single argument: the project-resources hash table.")
 (defun declarative-project--apply-treemacs-workspaces (project-resources)
   "Add project to any treemacs workspaces listed in PROJECT-RESOURCES."
   (when-let ((project-workspaces (gethash 'treemacs-workspaces project-resources))
-             (project-file (gethash 'project-file project-resources)))
+             (root-dir (declarative-project-root-directory project-resources)))
     (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook
                         project-resources)
     (when (featurep 'treemacs)
@@ -152,7 +153,7 @@ Functions receive a single argument: the project-resources hash table.")
           (treemacs-do-create-workspace workspace)
           (treemacs-with-workspace (treemacs-find-workspace-by-name workspace)
             (treemacs-do-add-project-to-workspace
-             (file-name-directory project-file)
+             root-dir
              project-name)))))))
 
 (defun declarative-project--parse-project-file (content)
@@ -170,23 +171,35 @@ if both parsers fail or if the result is not a hash table."
         result
       (user-error "Failed to parse .project file as YAML or JSON"))))
 
+(defun declarative-project--install-from-content (content project-dir &optional extra-keys)
+  "Parse CONTENT (YAML/JSON) and run the install pipeline rooted at PROJECT-DIR.
+EXTRA-KEYS is an alist of additional keys to set in the resource hash."
+  (let* ((default-directory (file-name-as-directory (expand-file-name project-dir)))
+         (project-resources (declarative-project--parse-project-file content)))
+    (puthash 'project-root default-directory project-resources)
+    (dolist (pair extra-keys)
+      (puthash (car pair) (cdr pair) project-resources))
+    (declarative-project--check-required-resources project-resources)
+    (declarative-project--install-project-dependencies project-resources)
+    (declarative-project--copy-local-files project-resources)
+    (declarative-project--create-symlinks project-resources)
+    (declarative-project--apply-treemacs-workspaces project-resources)
+    (message "...Finished Installation!")
+    project-resources))
+
 (defun declarative-project--install-project ()
   "Step through project spec and apply any blocks found."
   (interactive)
   (let ((project-file (expand-file-name ".project" default-directory)))
-    (when (file-exists-p project-file)
-      (message "Installing project from %s..." project-file)
-      (with-temp-buffer
-        (insert-file-contents project-file)
-        (let ((project-resources
-               (declarative-project--parse-project-file (buffer-string))))
-          (puthash 'project-file project-file project-resources)
-          (declarative-project--check-required-resources project-resources)
-          (declarative-project--install-project-dependencies project-resources)
-          (declarative-project--copy-local-files project-resources)
-          (declarative-project--create-symlinks project-resources)
-          (declarative-project--apply-treemacs-workspaces project-resources)
-          (message "...Finished Installation!"))))))
+    (unless (file-exists-p project-file)
+      (user-error "No .project file found in %s" default-directory))
+    (message "Installing project from %s..." project-file)
+    (declarative-project--install-from-content
+     (with-temp-buffer
+       (insert-file-contents project-file)
+       (buffer-string))
+     (file-name-directory project-file)
+     (list (cons 'project-file project-file)))))
 
 ;;; --- Mode definition ---
 
