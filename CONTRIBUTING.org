@@ -1,0 +1,55 @@
+#+TITLE: Contributing to declarative-project-mode
+
+Thank you for your interest in contributing!
+
+* Getting Started
+
+1. Clone the repository:
+   #+begin_src shell
+   git clone https://github.com/cuttlefisch/declarative-project-mode.git
+   cd declarative-project-mode
+   #+end_src
+
+2. Install [[https://github.com/cask/cask][Cask]] for dependency management.
+
+3. Install dependencies and run tests:
+   #+begin_src shell
+   cask install
+   make test
+   #+end_src
+
+* Development Workflow
+
+1. Branch from =main=.
+2. Write tests first — the project uses TDD.
+3. Run =make test= to verify all specs pass before submitting.
+4. Keep commits focused: one logical change per commit.
+
+* Code Style
+
+- All files use =lexical-binding: t=.
+- Target Emacs 28.1+ APIs (no =cl-lib= aliases for built-ins available since 28.1).
+- Prefer =dolist= over =seq-doseq= for simple list iteration.
+- Prefer =call-process= over =shell-command= for subprocess calls.
+- Use =pcase= for structured matching on spec fields.
+
+* Testing
+
+Tests use [[https://github.com/jorgenschaefer/emacs-buttercup][Buttercup]]. Test files live in =test/=:
+
+- =test/test-helper.el= — fixtures, macros (=with-temp-project-dir=), and treemacs stubs.
+- =test/test-declarative-project.el= — core specs.
+- =test/test-ob-declarative-project.el= — org-babel integration specs.
+
+When adding a new feature, add corresponding specs. The =with-temp-project-dir= macro
+creates an isolated temp directory with a =.project= file for each test case.
+
+* Submitting Changes
+
+1. Open a pull request against =main=.
+2. Describe *what* changed and *why*.
+3. Ensure CI passes (Emacs 28.1, 29.4, and snapshot).
+
+* License
+
+All contributions are licensed under the [[file:LICENSE][GNU General Public License v3.0]].

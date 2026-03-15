@@ -1,76 +1,81 @@
-* declarative-project-mode
+#+TITLE: declarative-project-mode
 
-A minor mode for managing and installing a variety of project contents with a simple
-declarative syntax in Emacs.
+[[https://github.com/cuttlefisch/declarative-project-mode/actions/workflows/ci.yml][https://img.shields.io/github/actions/workflow/status/cuttlefisch/declarative-project-mode/ci.yml?branch=main&style=flat-square]]
+[[https://www.gnu.org/licenses/gpl-3.0][https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square]]
+[[https://www.gnu.org/software/emacs/][https://img.shields.io/badge/Emacs-28.1%2B-purple?style=flat-square]]
 
-This mode allows you to define a project as a conceptual grouping of software components,
-and then manage and install these components with ease. The mode currently supports
-installing git repositories as dependencies, and warning about missing required resources.
+An Emacs minor mode for declarative project resource management. Define your
+project's dependencies, files, symlinks, and workspace assignments in a single
+=.project= file, then install everything with one keybinding.
 
-To use the mode, create a file called .project in the root of your project directory and
-add a Yaml or JSON object with the following properties:
-- required-resources: A list of resources that must exist for the project to be
-  considered complete.
-- deps: A list of git repositories to be cloned as dependencies.
-- local-files: A list of files to be copied from their current location to the
-  project directory.
-- symlinks: List of link/target pairs to create as symlinks relative to the project
-  directory.
-- treemacs-workspaces: A list of Treemacs workspace names this project should be added to.
+* Installation
 
-Note that any omitted ~dest~ or ~link~ field results in that resource's creation in the
-project root directory, named as the ~Filename.extension~.
+** straight.el / Doom Emacs
 
-This project prefers Yaml.
+#+begin_src emacs-lisp
+;; straight.el
+(straight-use-package
+ '(declarative-project-mode
+   :host github
+   :repo "cuttlefisch/declarative-project-mode"))
+
+;; Doom Emacs (packages.el)
+(package! declarative-project-mode
+  :recipe (:host github
+           :repo "cuttlefisch/declarative-project-mode"))
+#+end_src
+
+** Manual
+
+#+begin_src shell
+git clone https://github.com/cuttlefisch/declarative-project-mode.git
+#+end_src
+
+#+begin_src emacs-lisp
+(add-to-list 'load-path "/path/to/declarative-project-mode")
+(require 'declarative-project-mode)
+#+end_src
+
+* Usage
+
+Create a =.project= file in your project root. The mode activates automatically
+when you visit a =.project= file.
+
+Press =C-c C-c i= to install all declared resources.
+
+** Example =.project= (YAML)
+
 #+begin_src yaml
-project-name: "Declarative Project Mode"
+project-name: "My Project"
 required-resources:
   - README.org
+  - src/main.el
 deps:
-  - src: git@github.com:cuttlefisch/declarative-project-mode.git
-    dest: DCM
-  - src: git@github.com:cuttlefisch/declarative-project-mode.git
-    args: "--branch some-branch-name"
-    # (↑) use default dest for git clone
+  - src: git@github.com:user/repo.git
+    dest: vendor/repo
+  - src: git@github.com:user/other.git
+    args: "--branch develop"
 local-files:
-  - src: ~/path/to/src
-    dest: path/to/dest
-    # (↑) path relative to project root dir
-  - src: /path/to/src
-    # (↑) default dest is project root dir
+  - src: ~/templates/makefile
+    dest: Makefile
 symlinks:
-  - targ: /path/to/link-target
-    link: path/to/symlink
-  - targ: ~/path/to/link-target
-    # (↑) default link is project root dir
+  - targ: ~/notes/my-project.org
+    link: docs/notes.org
 treemacs-workspaces:
-  - "Minor Modes"
+  - "Emacs Packages"
 #+end_src
 
-#+begin_src json
-{
-  "project-name": "Declarative Project Mode",
-  "required-resources": ["README.org"],
-  "deps": [
-    {"src": "git@github.com:user/repo.git", "dest": "repo"}
-  ],
-  "local-files": [
-    {"src": "/path/to/file", "dest": "local-copy"}
-  ],
-  "symlinks": [
-    {"targ": "/path/to/target", "link": "my-link"}
-  ],
-  "treemacs-workspaces": ["my_second_workspace", "my_workspace"]
-}
-#+end_src
-The mode can be activated by visiting a file in the project directory with the .project
-file or by running (declarative-project-mode 1) in the project directory.
+** Auto-install
 
-*Install the project* by running "C-c C-c i" from the ~.project~ file.
+To install resources automatically when the mode activates:
+
+#+begin_src emacs-lisp
+(setq declarative-project-auto-install t)
+#+end_src
 
 * Org-Babel Integration
 
-You can embed project specs directly in org files as src blocks:
+Embed project specs in org files as =declarative-project= src blocks:
 
 #+begin_example
 #+begin_src declarative-project :dir ~/my-project
@@ -78,40 +83,64 @@ project-name: "My Project"
 deps:
   - src: git@github.com:user/repo.git
     dest: repo
-symlinks:
-  - targ: ~/notes/my-project.org
-    link: docs/notes.org
 #+end_src
 #+end_example
 
-Execute with ~C-c C-c~ on the src block.
+Execute with =C-c C-c= on the src block. The =:dir= header argument sets the
+project root directory (defaults to =default-directory=).
 
-To enable, add to your config:
+Enable in your config:
+
 #+begin_src emacs-lisp
 (add-to-list 'org-babel-load-languages '(declarative-project . t))
 (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
 #+end_src
 
-The ~:dir~ header argument sets the project root directory (defaults to ~default-directory~).
+* Treemacs Workspace Integration
 
-* Noteworthy Features
-** Treemacs Workspace Assignment
-Provided a list of treemacs workspaces, the installation process assigns this project to
-each specified worksace. This should help decentralize workspace configuration,
-helping construct conceptual groupings of projects regardless of their location in the
-filesystem.
+The optional =declarative-project-treemacs-mode= manages treemacs workspaces
+from =.project= files. Each project declares which workspaces it belongs to, and
+the mode ensures those assignments exist.
 
-** Locally Copy or Symlink Resources
-It's often useful to maintain documentation in a form of knowlegebase such as Org Roam.
-This approach allows us to maintain a declarative set of symlinks to connect a project to
-the documentation, Rather than adapt the documentation & knowlege-building process to
-conform to individual projects.
+#+begin_src emacs-lisp
+(require 'declarative-project-treemacs)
+(declarative-project-treemacs-mode 1)
+#+end_src
 
-* Future Plans
-- Improving the minor-mode-specific quality, such as using proper custom variables and
-  adding enable/disable behavior.
-- Support custom scripts or commands with ~function~, ~args~ step
-- Support custom resource types & install methods
-    - cloud storage backend
-    - s3 backend
-    - package managers
+When enabled, project installation creates or updates treemacs workspace
+entries. Set =declarative-project-treemacs-autoprune= to =nil= to disable
+automatic removal of stale project entries on mode init.
+
+* Spec Reference
+
+| Field                  | Type          | Description                                          |
+|------------------------+---------------+------------------------------------------------------|
+| =project-name=        | string        | Display name for the project                         |
+| =required-resources=  | list(string)  | Paths that must exist; warns on missing              |
+| =deps=                | list(object)  | Git repos to clone (=src=, =dest=, =args=)          |
+| =local-files=         | list(object)  | Files to copy into the project (=src=, =dest=)      |
+| =symlinks=            | list(object)  | Symlinks to create (=targ=, =link=)                 |
+| =treemacs-workspaces= | list(string)  | Treemacs workspaces to assign this project to        |
+
+For =deps=, =local-files=, and =symlinks=: omitting =dest= or =link= defaults
+to placing the resource in the project root directory.
+
+* Configuration
+
+| Variable                                   | Default | Description                                       |
+|--------------------------------------------+---------+---------------------------------------------------|
+| =declarative-project-auto-install=         | =nil=   | Auto-run installation when mode activates          |
+| =declarative-project-treemacs-autoprune=   | =t=     | Remove stale project entries on treemacs mode init |
+
+* Development
+
+#+begin_src shell
+cask install
+make test    # 32 Buttercup specs
+#+end_src
+
+See [[file:CONTRIBUTING.org][CONTRIBUTING.org]] for the full development guide.
+
+* License
+
+[[file:LICENSE][GNU General Public License v3.0]]
