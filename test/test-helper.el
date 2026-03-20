@@ -87,7 +87,7 @@ Binds `project-dir' and `project-file'."
 (unless (featurep 'treemacs)
   ;; --- Structs ---
   (cl-defstruct (treemacs-workspace (:constructor treemacs-workspace->create!))
-    name projects)
+    name projects is-disabled?)
 
   (cl-defstruct (treemacs-project (:constructor treemacs-project->create!))
     name path path-status is-disabled?)

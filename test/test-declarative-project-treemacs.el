@@ -90,7 +90,25 @@
       (delete-file cache-file)
       (declarative-project-treemacs--read-cache)
       (expect declarative-project-treemacs--desired-state :to-be-truthy)
-      (expect (file-exists-p cache-file) :to-be-truthy))))
+      (expect (file-exists-p cache-file) :to-be-truthy)))
+
+  (it "normalizes old structs missing is-disabled? field after load"
+    (with-treemacs-test-state
+      ;; Write a cache file with old-layout structs (missing is-disabled?)
+      (with-temp-file cache-file
+        (insert ";; -*- no-byte-compile: t -*-\n")
+        (insert "(setq declarative-project-treemacs--desired-state '(")
+        ;; 2-field workspace: only name + projects, no is-disabled?
+        (insert "#s(treemacs-workspace \"OldWS\" (")
+        (insert "#s(treemacs-project \"OldProj\" \"/tmp/old\" local-readable nil)")
+        (insert "))")
+        (insert "))\n"))
+      (declarative-project-treemacs--read-cache)
+      (let ((ws (car declarative-project-treemacs--desired-state)))
+        (expect (treemacs-workspace->name ws) :to-equal "OldWS")
+        (expect (length (treemacs-workspace->projects ws)) :to-equal 1)
+        ;; The key check: is-disabled? accessor must not error
+        (expect (treemacs-workspace->is-disabled? ws) :not :to-throw)))))
 
 ;;; ==========================================================================
 ;;; declarative-project-treemacs--assign-project

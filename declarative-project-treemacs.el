@@ -75,6 +75,43 @@ Initialized lazily when the mode is enabled.")
 
 ;;; --- Cache persistence ---
 
+(defun declarative-project-treemacs--normalize-struct (record constructor &rest accessors)
+  "Re-create RECORD via CONSTRUCTOR using ACCESSORS to extract fields.
+Any accessor that fails (e.g. due to a struct layout change) yields nil.
+This ensures cached structs are migrated to the current layout."
+  (apply constructor
+         (mapcan (lambda (acc)
+                   (let* ((keyword (intern (format ":%s" (car acc))))
+                          (value (condition-case nil
+                                     (funcall (cdr acc) record)
+                                   (args-out-of-range nil))))
+                     (list keyword value)))
+                 accessors)))
+
+(defun declarative-project-treemacs--normalize-cache ()
+  "Re-create all workspace/project structs to match current definitions.
+Handles cache entries written with older struct layouts that may be
+missing fields (e.g. `is-disabled?')."
+  (setq declarative-project-treemacs--desired-state
+        (mapcar
+         (lambda (ws)
+           (declarative-project-treemacs--normalize-struct
+            ws #'treemacs-workspace->create!
+            (cons 'name #'treemacs-workspace->name)
+            (cons 'projects
+                  (lambda (w)
+                    (mapcar
+                     (lambda (proj)
+                       (declarative-project-treemacs--normalize-struct
+                        proj #'treemacs-project->create!
+                        (cons 'name #'treemacs-project->name)
+                        (cons 'path #'treemacs-project->path)
+                        (cons 'path-status #'treemacs-project->path-status)
+                        (cons 'is-disabled? #'treemacs-project->is-disabled?)))
+                     (treemacs-workspace->projects w))))
+            (cons 'is-disabled? #'treemacs-workspace->is-disabled?)))
+         declarative-project-treemacs--desired-state)))
+
 (defun declarative-project-treemacs--save-cache ()
   "Write current desired state to cache file."
   (declarative-project-treemacs--ensure-desired-state)
@@ -86,9 +123,12 @@ Initialized lazily when the mode is enabled.")
                      ',declarative-project-treemacs--desired-state)))))
 
 (defun declarative-project-treemacs--read-cache ()
-  "Read the desired state from the cache file."
+  "Read the desired state from the cache file.
+After loading, normalizes all structs to the current layout."
   (if (file-exists-p declarative-project-treemacs--cache-file)
-      (load declarative-project-treemacs--cache-file nil t t)
+      (progn
+        (load declarative-project-treemacs--cache-file nil t t)
+        (declarative-project-treemacs--normalize-cache))
     (declarative-project-treemacs--ensure-desired-state)
     (declarative-project-treemacs--save-cache)))
 
