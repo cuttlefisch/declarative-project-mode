@@ -32,14 +32,15 @@
 ;;
 ;; A `.project' file is a YAML or JSON document that may declare:
 ;;
-;;   - `project-name'        — human-readable project label
+;;   - `project-name'        — human-readable project label (alias: `name')
+;;   - `root-directory'      — project root path (overrides `:dir' / cwd)
 ;;   - `required-resources'  — paths that must exist (warnings on missing)
 ;;   - `deps'                — git repositories to clone
 ;;   - `local-files'         — files/directories to copy into the project
 ;;   - `symlinks'            — symbolic links to create
-;;   - `treemacs-workspaces' — treemacs workspace assignments (see
-;;                             `declarative-project-treemacs' for full
-;;                             workspace management)
+;;   - `treemacs-workspaces' — treemacs workspace assignments (alias:
+;;                             `workspaces'; see `declarative-project-treemacs'
+;;                             for full workspace management)
 ;;
 ;; Use `declarative-project-install' (bound to `C-c C-c i') to process the
 ;; spec.  Set `declarative-project-auto-install' to run it on mode activation.
@@ -78,20 +79,27 @@ Functions receive a single argument: the project-resources hash table.")
 
 (defun declarative-project-workspaces (project-resources)
   "Return the treemacs-workspaces list from PROJECT-RESOURCES hash table.
-The value is a list of workspace name strings, or nil if unset."
-  (gethash 'treemacs-workspaces project-resources))
+The value is a list of workspace name strings, or nil if unset.
+Accepts both `treemacs-workspaces' and `workspaces' as key names."
+  (or (gethash 'treemacs-workspaces project-resources)
+      (gethash 'workspaces project-resources)))
 
 (defun declarative-project-root-directory (project-resources)
   "Return the project root directory from PROJECT-RESOURCES hash table.
-Prefers the explicit `project-root' key; falls back to the parent
-directory of `project-file' if set."
+Prefers the explicit `project-root' key (set by the install pipeline);
+falls back to `root-directory' from the spec (expanded to absolute),
+then to the parent directory of `project-file'."
   (or (gethash 'project-root project-resources)
+      (when-let ((rd (gethash 'root-directory project-resources)))
+        (file-name-as-directory (expand-file-name rd)))
       (when-let ((pf (gethash 'project-file project-resources)))
         (file-name-directory pf))))
 
 (defun declarative-project-name (project-resources)
-  "Return the project name string from PROJECT-RESOURCES hash table, or nil."
-  (gethash 'project-name project-resources))
+  "Return the project name string from PROJECT-RESOURCES hash table, or nil.
+Accepts both `project-name' and `name' as key names."
+  (or (gethash 'project-name project-resources)
+      (gethash 'name project-resources)))
 
 ;;; --- Core functions ---
 
@@ -162,13 +170,13 @@ directory of `project-file' if set."
 
 (defun declarative-project--apply-treemacs-workspaces (project-resources)
   "Add project to any treemacs workspaces listed in PROJECT-RESOURCES."
-  (when-let ((project-workspaces (gethash 'treemacs-workspaces project-resources))
+  (when-let ((project-workspaces (declarative-project-workspaces project-resources))
              (root-dir (declarative-project-root-directory project-resources)))
     (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook
                         project-resources)
     (when (featurep 'treemacs)
       (dolist (workspace project-workspaces)
-        (let ((project-name (or (gethash 'project-name project-resources) workspace)))
+        (let ((project-name (or (declarative-project-name project-resources) workspace)))
           (message "Adding project to treemacs workspace: %s" workspace)
           (treemacs-do-create-workspace workspace)
           (treemacs-with-workspace (treemacs-find-workspace-by-name workspace)
@@ -193,9 +201,14 @@ if both parsers fail or if the result is not a hash table."
 
 (defun declarative-project--install-from-content (content project-dir &optional extra-keys)
   "Parse CONTENT (YAML/JSON) and run the install pipeline rooted at PROJECT-DIR.
+If the spec contains a `root-directory' key, that path is used as the
+project root instead of PROJECT-DIR.
 EXTRA-KEYS is an alist of additional keys to set in the resource hash."
-  (let* ((default-directory (file-name-as-directory (expand-file-name project-dir)))
-         (project-resources (declarative-project--parse-project-file content)))
+  (let* ((project-resources (declarative-project--parse-project-file content))
+         (root-from-spec (when-let ((rd (gethash 'root-directory project-resources)))
+                           (file-name-as-directory (expand-file-name rd))))
+         (default-directory (or root-from-spec
+                                (file-name-as-directory (expand-file-name project-dir)))))
     (puthash 'project-root default-directory project-resources)
     (dolist (pair extra-keys)
       (puthash (car pair) (cdr pair) project-resources))

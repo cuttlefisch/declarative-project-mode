@@ -211,7 +211,19 @@
     (let ((resources (make-hash-table :test 'equal)))
       (spy-on 'run-hook-with-args)
       (declarative-project--apply-treemacs-workspaces resources)
-      (expect 'run-hook-with-args :not :to-have-been-called))))
+      (expect 'run-hook-with-args :not :to-have-been-called)))
+
+  (it "runs the hook when using workspaces alias key"
+    (with-temp-project-dir
+      (let ((resources (make-hash-table :test 'equal))
+            (hook-called nil))
+        (puthash 'workspaces '("WS1") resources)
+        (puthash 'project-file (expand-file-name ".project") resources)
+        (puthash 'name "Test" resources)
+        (let ((declarative-project--apply-treemacs-workspaces-hook
+               (list (lambda (res) (setq hook-called t)))))
+          (declarative-project--apply-treemacs-workspaces resources)
+          (expect hook-called :to-be-truthy))))))
 
 ;;; ==========================================================================
 ;;; declarative-project--install-from-content
@@ -254,7 +266,25 @@
       (let ((result (declarative-project--install-from-content
                      test-yaml-fixture project-dir
                      (list (cons 'my-key "my-value")))))
-        (expect (gethash 'my-key result) :to-equal "my-value")))))
+        (expect (gethash 'my-key result) :to-equal "my-value"))))
+
+  (it "uses root-directory from spec as project root when present"
+    (with-temp-project-dir
+      (let ((root-dir (make-temp-file "dpm-root-" t)))
+        (unwind-protect
+            (progn
+              (spy-on 'declarative-project--check-required-resources)
+              (spy-on 'declarative-project--install-project-dependencies)
+              (spy-on 'declarative-project--copy-local-files)
+              (spy-on 'declarative-project--create-symlinks)
+              (spy-on 'declarative-project--apply-treemacs-workspaces)
+              (let* ((yaml (format "name: Test\nroot-directory: %s\n" root-dir))
+                     (result (declarative-project--install-from-content
+                              yaml project-dir)))
+                (expect (gethash 'project-root result)
+                        :to-equal (file-name-as-directory
+                                   (expand-file-name root-dir)))))
+          (delete-directory root-dir t))))))
 
 ;;; ==========================================================================
 ;;; declarative-project--install-project (parsing)
@@ -329,7 +359,44 @@
   (it "declarative-project-name returns project-name value"
     (let ((resources (make-hash-table :test 'equal)))
       (puthash 'project-name "My Project" resources)
-      (expect (declarative-project-name resources) :to-equal "My Project"))))
+      (expect (declarative-project-name resources) :to-equal "My Project")))
+
+  ;; --- Key alias tests ---
+
+  (it "declarative-project-workspaces falls back to workspaces key"
+    (let ((resources (make-hash-table :test 'equal)))
+      (puthash 'workspaces '("WS1") resources)
+      (expect (declarative-project-workspaces resources) :to-equal '("WS1"))))
+
+  (it "declarative-project-workspaces prefers treemacs-workspaces over workspaces"
+    (let ((resources (make-hash-table :test 'equal)))
+      (puthash 'workspaces '("old") resources)
+      (puthash 'treemacs-workspaces '("new") resources)
+      (expect (declarative-project-workspaces resources) :to-equal '("new"))))
+
+  (it "declarative-project-name falls back to name key"
+    (let ((resources (make-hash-table :test 'equal)))
+      (puthash 'name "Short Name" resources)
+      (expect (declarative-project-name resources) :to-equal "Short Name")))
+
+  (it "declarative-project-name prefers project-name over name"
+    (let ((resources (make-hash-table :test 'equal)))
+      (puthash 'name "old" resources)
+      (puthash 'project-name "new" resources)
+      (expect (declarative-project-name resources) :to-equal "new")))
+
+  (it "declarative-project-root-directory falls back to root-directory key"
+    (let ((resources (make-hash-table :test 'equal)))
+      (puthash 'root-directory "/tmp/myproject" resources)
+      (expect (declarative-project-root-directory resources)
+              :to-equal "/tmp/myproject/")))
+
+  (it "declarative-project-root-directory prefers project-root over root-directory"
+    (let ((resources (make-hash-table :test 'equal)))
+      (puthash 'root-directory "/tmp/old" resources)
+      (puthash 'project-root "/tmp/new/" resources)
+      (expect (declarative-project-root-directory resources)
+              :to-equal "/tmp/new/"))))
 
 ;;; ==========================================================================
 ;;; defgroup / defcustom
