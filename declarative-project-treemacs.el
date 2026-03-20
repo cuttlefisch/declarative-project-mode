@@ -200,9 +200,22 @@ After loading, normalizes all structs to the current layout."
 
 ;;; --- Workspace override ---
 
+(declare-function treemacs-current-workspace "treemacs-workspaces" ())
+
 (defun declarative-project-treemacs--override-workspaces ()
-  "Set treemacs workspaces to the desired state."
-  (setq treemacs--workspaces declarative-project-treemacs--desired-state))
+  "Set treemacs workspaces to the desired state.
+Also updates treemacs's scope shelf so the current workspace points
+to the corresponding object in the desired state list.  Without this,
+the scope shelf retains a stale reference and treemacs falls back to
+directory browsing instead of showing workspace projects."
+  (setq treemacs--workspaces declarative-project-treemacs--desired-state)
+  (condition-case nil
+      (when-let* ((current (treemacs-current-workspace))
+                  (name (treemacs-workspace->name current))
+                  (updated (declarative-project-treemacs--workspaces-by-name name)))
+        (unless (eq current updated)
+          (setf (treemacs-current-workspace) updated)))
+    (error nil)))
 
 ;;; --- Hook integration ---
 

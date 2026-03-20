@@ -230,7 +230,18 @@
                           :name "Override" :projects nil))))
         (setq declarative-project-treemacs--desired-state state)
         (declarative-project-treemacs--override-workspaces)
-        (expect treemacs--workspaces :to-equal state)))))
+        (expect treemacs--workspaces :to-equal state))))
+
+  (it "updates current workspace to matching object in desired state"
+    (with-treemacs-test-state
+      (let* ((old-ws (treemacs-workspace->create! :name "MyWS" :projects nil))
+             (new-ws (treemacs-workspace->create! :name "MyWS" :projects nil)))
+        ;; Simulate treemacs having a stale workspace in scope shelf
+        (setf (treemacs-current-workspace) old-ws)
+        (setq declarative-project-treemacs--desired-state (list new-ws))
+        (declarative-project-treemacs--override-workspaces)
+        ;; Current workspace should now be the new object, not the old one
+        (expect (treemacs-current-workspace) :to-be new-ws)))))
 
 ;;; ==========================================================================
 ;;; declarative-project-treemacs--assign-declared-project (hook integration)

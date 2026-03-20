@@ -99,6 +99,16 @@ Binds `project-dir' and `project-file'."
   (defvar treemacs-override-workspace nil
     "Stub for treemacs workspace override variable.")
 
+  (defvar treemacs--current-workspace-stub nil
+    "Stub storage for current workspace in tests.")
+
+  (defun treemacs-current-workspace ()
+    "Stub: return current workspace."
+    treemacs--current-workspace-stub)
+
+  (gv-define-setter treemacs-current-workspace (val)
+    `(setq treemacs--current-workspace-stub ,val))
+
   (defun treemacs-do-create-workspace (&optional _name) '(success nil))
   (defun treemacs-find-workspace-by-name (_name) nil)
   (defun treemacs-do-add-project-to-workspace (_path _name) nil)
@@ -114,7 +124,8 @@ Binds `cache-file' to the temporary cache path."
   `(let* ((cache-file (make-temp-file "dpm-treemacs-cache-" nil ".el"))
           (declarative-project-treemacs--desired-state nil)
           (declarative-project-treemacs--cache-file cache-file)
-          (declarative-project-treemacs-mode nil))
+          (declarative-project-treemacs-mode nil)
+          (treemacs--current-workspace-stub nil))
      (unwind-protect
          (progn ,@body)
        (when (file-exists-p cache-file)
