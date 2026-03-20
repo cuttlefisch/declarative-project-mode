@@ -5,11 +5,11 @@
 ;; Author: Hayden Stanko <hayden@cuttle.codes>
 ;; Maintainer: Hayden Stanko <hayden@cuttle.codes>
 ;; Created: January 14, 2023
-;; Modified: March 15, 2026
-;; Version: 0.2.0
+;; Modified: March 20, 2026
+;; Version: 0.3.0
 ;; Keywords: convenience, tools, project
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
-;; Package-Requires: ((emacs "28.1") (treemacs "2.10") (declarative-project-mode "0.2.0"))
+;; Package-Requires: ((emacs "28.1") (treemacs "2.10") (declarative-project-mode "0.3.0"))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;

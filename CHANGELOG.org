@@ -1,0 +1,57 @@
+#+title: Changelog
+#+author: Hayden Stanko
+
+* 0.3.0 — 2026-03-20
+
+** Bug fixes
+- Fix =warn= / =display-warning= mismatch :: All warning calls now use
+  =display-warning= with the ='declarative-project= type symbol, matching
+  existing test expectations and providing structured warning output.
+- Fix treemacs =--unassign-project= nil dereference :: Wrapped workspace
+  lookup in =when-let= so =(treemacs-workspace->projects ws)= is never called
+  on a nil workspace.
+- Remove tab characters from warning format strings.
+
+** New features
+- =declarative-project-install= :: Public interactive command (alias for
+  the internal =--install-project=).  Keymap binding =C-c C-c i= now points
+  to the public name.
+- =;;;###autoload= cookies :: Added to =declarative-project-mode= and
+  =org-babel-execute:declarative-project= for proper lazy-loading via
+  =package.el=.
+
+** Code quality
+- Added =:package-version= to all =defcustom= declarations.
+- Expanded Commentary sections with full =.project= file format reference.
+- Improved docstrings on minor mode, accessor functions, and public API.
+- Deleted legacy ERT test file (=declarative-project-mode-test.el=) that
+  referenced removed API.
+- Added =.dir-locals.el= for development settings.
+
+** Tests
+- 20 new Buttercup specs for =declarative-project-treemacs= module:
+  =--minimal-desired-state=, =--ensure-desired-state=, =--workspaces-by-name=,
+  cache round-trip, =--assign-project= (new workspace, existing, dedup),
+  =--unassign-project= (happy path + nil regression), =--remove-workspace=,
+  =--prune-invalid-projects=, =--override-workspaces=,
+  =--assign-declared-project= (hook integration),
+  =declarative-project-treemacs-mode= (hook add/remove).
+- Expanded =test-helper.el= with =cl-defstruct= stubs for
+  =treemacs-workspace= / =treemacs-project= and =with-treemacs-test-state=
+  macro.
+- Total spec count: 52 (up from 32).
+
+* 0.2.0 — 2026-03-15
+
+** Highlights
+- Rewrote core to use hash-table based =project-resources= instead of
+  =cl-defstruct=.
+- Absorbed =treemacs-declarative-workspaces-mode= into
+  =declarative-project-treemacs.el=.
+- Added =ob-declarative-project.el= for Org-Babel integration.
+- Added =declarative-project--install-from-content= for programmatic /
+  Org-Babel use without a =.project= file on disk.
+- Switched test framework from ERT to Buttercup (32 specs).
+- Replaced =shell-command= with =call-process= for git clone (security).
+- Added CI via GitHub Actions, README, and CONTRIBUTING guide.
+- Dropped =file-name-parent-directory= for Emacs 28.1 compatibility.
