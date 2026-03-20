@@ -80,14 +80,45 @@ Binds `project-dir' and `project-file'."
 
 ;;; --- Treemacs stubs ---
 
-;; Stub treemacs functions so tests don't require treemacs
+;; Stub treemacs structs and functions so tests don't require treemacs.
+;; Real treemacs uses cl-defstruct; we replicate just enough for the
+;; treemacs extension module to work.
+
 (unless (featurep 'treemacs)
+  ;; --- Structs ---
+  (cl-defstruct (treemacs-workspace (:constructor treemacs-workspace->create!))
+    name projects)
+
+  (cl-defstruct (treemacs-project (:constructor treemacs-project->create!))
+    name path path-status is-disabled?)
+
+  ;; --- Workspace API stubs ---
+  (defvar treemacs--workspaces nil
+    "Stub for treemacs workspace list.")
+
   (defun treemacs-do-create-workspace (&optional _name) '(success nil))
   (defun treemacs-find-workspace-by-name (_name) nil)
   (defmacro treemacs-with-workspace (_ws &rest body)
     (declare (indent 1))
     `(progn ,@body))
-  (defun treemacs-do-add-project-to-workspace (_path _name) nil))
+  (defun treemacs-do-add-project-to-workspace (_path _name) nil)
+  (defvar treemacs-switch-workspace-hook nil
+    "Stub for treemacs workspace switch hook."))
+
+;;; --- Treemacs test macro ---
+
+(defmacro with-treemacs-test-state (&rest body)
+  "Execute BODY with a clean treemacs desired-state and temporary cache file.
+Binds `cache-file' to the temporary cache path."
+  (declare (indent 0))
+  `(let* ((cache-file (make-temp-file "dpm-treemacs-cache-" nil ".el"))
+          (declarative-project-treemacs--desired-state nil)
+          (declarative-project-treemacs--cache-file cache-file)
+          (declarative-project-treemacs-mode nil))
+     (unwind-protect
+         (progn ,@body)
+       (when (file-exists-p cache-file)
+         (delete-file cache-file)))))
 
 ;;; --- Helper functions ---
 

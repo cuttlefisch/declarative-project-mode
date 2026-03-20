@@ -36,6 +36,7 @@ test:
 		-l buttercup \
 		-l test-helper \
 		-l test-declarative-project \
+		-l test-declarative-project-treemacs \
 		-l test-ob-declarative-project \
 		-f buttercup-run
 
