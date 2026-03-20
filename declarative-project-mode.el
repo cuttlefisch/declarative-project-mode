@@ -84,7 +84,8 @@ Functions receive a single argument: the project-resources hash table.")
   (when-let ((required-resources (gethash 'required-resources project-resources)))
     (dolist (resource required-resources)
       (unless (file-exists-p resource)
-        (warn "Missing required resource: %s" resource)))))
+        (display-warning 'declarative-project
+                         (format "Missing required resource: %s" resource))))))
 
 (defun declarative-project--install-project-dependencies (project-resources)
   "Clone any git dependencies locally in PROJECT-RESOURCES."
@@ -106,7 +107,8 @@ Functions receive a single argument: the project-resources hash table.")
                                 (list src)
                                 (unless (string-empty-p dest) (list dest))))))
             (unless (zerop exit-code)
-              (warn "git clone %s failed with exit code %d" src exit-code))))))))
+              (display-warning 'declarative-project
+                               (format "git clone %s failed with exit code %d" src exit-code)))))))))
 
 (defun declarative-project--copy-local-files (project-resources)
   "Copy over any local files in PROJECT-RESOURCES."
@@ -124,7 +126,8 @@ Functions receive a single argument: the project-resources hash table.")
           (message "Copying file %s..." src)
           (copy-file src full-dest t))
          (t
-          (warn "No such file or directory:\t%s" src)))))))
+          (display-warning 'declarative-project
+                           (format "No such file or directory: %s" src))))))))
 
 (defun declarative-project--create-symlinks (project-resources)
   "Create symlinks defined in PROJECT-RESOURCES."
@@ -135,7 +138,8 @@ Functions receive a single argument: the project-resources hash table.")
                        (file-name-nondirectory targ)))
              (full-link (expand-file-name link)))
         (if (not (file-exists-p targ))
-            (warn "No such file or directory:\t%s" targ)
+            (display-warning 'declarative-project
+                             (format "No such file or directory: %s" targ))
           (make-directory (file-name-directory full-link) t)
           (message "Creating symlink %s -> %s" link targ)
           (make-symbolic-link targ full-link t))))))
@@ -203,6 +207,7 @@ EXTRA-KEYS is an alist of additional keys to set in the resource hash."
 
 ;;; --- Mode definition ---
 
+;;;###autoload
 (define-minor-mode declarative-project-mode
   "Declarative Project mode."
   :lighter " DPM"

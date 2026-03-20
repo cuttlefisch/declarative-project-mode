@@ -129,12 +129,11 @@ Initialized lazily when the mode is enabled.")
 
 (defun declarative-project-treemacs--unassign-project (project workspace)
   "Remove PROJECT from WORKSPACE in desired state."
-  (let* ((ws (declarative-project-treemacs--workspaces-by-name workspace))
-         (new-projects (cl-remove project
-                                  (treemacs-workspace->projects ws)
-                                  :test #'string=
-                                  :key (lambda (pj) (treemacs-project->name pj)))))
-    (when ws
+  (when-let ((ws (declarative-project-treemacs--workspaces-by-name workspace)))
+    (let ((new-projects (cl-remove project
+                                   (treemacs-workspace->projects ws)
+                                   :test #'string=
+                                   :key (lambda (pj) (treemacs-project->name pj)))))
       (setf (treemacs-workspace->projects ws) new-projects)))
   (when declarative-project-treemacs-mode
     (declarative-project-treemacs--override-workspaces))

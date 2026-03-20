@@ -30,6 +30,7 @@
 (require 'ob)
 (require 'declarative-project-mode)
 
+;;;###autoload
 (defun org-babel-execute:declarative-project (body params)
   "Execute a declarative-project source block.
 BODY is YAML/JSON content.  The `:dir' header sets project root
