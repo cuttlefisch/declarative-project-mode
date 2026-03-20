@@ -96,11 +96,11 @@ Binds `project-dir' and `project-file'."
   (defvar treemacs--workspaces nil
     "Stub for treemacs workspace list.")
 
+  (defvar treemacs-override-workspace nil
+    "Stub for treemacs workspace override variable.")
+
   (defun treemacs-do-create-workspace (&optional _name) '(success nil))
   (defun treemacs-find-workspace-by-name (_name) nil)
-  (defmacro treemacs-with-workspace (_ws &rest body)
-    (declare (indent 1))
-    `(progn ,@body))
   (defun treemacs-do-add-project-to-workspace (_path _name) nil)
   (defvar treemacs-switch-workspace-hook nil
     "Stub for treemacs workspace switch hook."))

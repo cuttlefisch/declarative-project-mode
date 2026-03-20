@@ -55,6 +55,7 @@
 (declare-function treemacs-do-create-workspace "treemacs-workspaces" (&optional name))
 (declare-function treemacs-find-workspace-by-name "treemacs-workspaces" (name))
 (declare-function treemacs-do-add-project-to-workspace "treemacs-workspaces" (path name))
+(defvar treemacs-override-workspace)
 
 ;;; --- Customization ---
 
@@ -179,7 +180,8 @@ Accepts both `project-name' and `name' as key names."
         (let ((project-name (or (declarative-project-name project-resources) workspace)))
           (message "Adding project to treemacs workspace: %s" workspace)
           (treemacs-do-create-workspace workspace)
-          (treemacs-with-workspace (treemacs-find-workspace-by-name workspace)
+          (let ((treemacs-override-workspace
+                 (treemacs-find-workspace-by-name workspace)))
             (treemacs-do-add-project-to-workspace
              root-dir
              project-name)))))))
