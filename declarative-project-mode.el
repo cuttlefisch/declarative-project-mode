@@ -26,14 +26,26 @@
 ;;
 ;;; Commentary:
 ;;
-;; Declarative Project mode is a minor mode for managing project resources. The
-;; mode is triggered by visiting a directory containing a .project file. The
-;; .project file should be in yaml or json format and may contain the following
-;; fields "project-name", "required-resources", "deps", "local-files",
-;; "symlinks", "treemacs-workspaces".
+;; Declarative Project mode is a minor mode for managing project resources
+;; through declarative `.project' files.  The mode activates automatically
+;; when visiting a `.project' file (via `find-file-hook').
 ;;
-;; Keybindings: - `C-c C-c i': Run the install-project command when visiting
-;; .project file
+;; A `.project' file is a YAML or JSON document that may declare:
+;;
+;;   - `project-name'        — human-readable project label
+;;   - `required-resources'  — paths that must exist (warnings on missing)
+;;   - `deps'                — git repositories to clone
+;;   - `local-files'         — files/directories to copy into the project
+;;   - `symlinks'            — symbolic links to create
+;;   - `treemacs-workspaces' — treemacs workspace assignments (see
+;;                             `declarative-project-treemacs' for full
+;;                             workspace management)
+;;
+;; Use `declarative-project-install' (bound to `C-c C-c i') to process the
+;; spec.  Set `declarative-project-auto-install' to run it on mode activation.
+;;
+;; See the project README for full documentation:
+;; https://github.com/cuttlefisch/declarative-project-mode
 ;;
 ;;; Code:
 (require 'json)
@@ -53,7 +65,8 @@
 (defcustom declarative-project-auto-install nil
   "If non-nil, automatically run installation when mode activates."
   :type 'boolean
-  :group 'declarative-project)
+  :group 'declarative-project
+  :package-version '(declarative-project-mode . "0.2.0"))
 
 ;;; --- Hooks ---
 
@@ -64,17 +77,20 @@ Functions receive a single argument: the project-resources hash table.")
 ;;; --- Accessor functions ---
 
 (defun declarative-project-workspaces (project-resources)
-  "Return the treemacs-workspaces list from PROJECT-RESOURCES."
+  "Return the treemacs-workspaces list from PROJECT-RESOURCES hash table.
+The value is a list of workspace name strings, or nil if unset."
   (gethash 'treemacs-workspaces project-resources))
 
 (defun declarative-project-root-directory (project-resources)
-  "Return the project root directory from PROJECT-RESOURCES."
+  "Return the project root directory from PROJECT-RESOURCES hash table.
+Prefers the explicit `project-root' key; falls back to the parent
+directory of `project-file' if set."
   (or (gethash 'project-root project-resources)
       (when-let ((pf (gethash 'project-file project-resources)))
         (file-name-directory pf))))
 
 (defun declarative-project-name (project-resources)
-  "Return the project name from PROJECT-RESOURCES."
+  "Return the project name string from PROJECT-RESOURCES hash table, or nil."
   (gethash 'project-name project-resources))
 
 ;;; --- Core functions ---
@@ -205,20 +221,33 @@ EXTRA-KEYS is an alist of additional keys to set in the resource hash."
      (file-name-directory project-file)
      (list (cons 'project-file project-file)))))
 
+;;;###autoload
+(defalias 'declarative-project-install #'declarative-project--install-project
+  "Parse the .project file in `default-directory' and install all declared resources.
+This is the public entry point for project installation.")
+
 ;;; --- Mode definition ---
 
 ;;;###autoload
 (define-minor-mode declarative-project-mode
-  "Declarative Project mode."
+  "Minor mode for declarative project resource management.
+
+Activates automatically when visiting a `.project' file.  Provides
+`declarative-project-install' (\\[declarative-project-install]) to
+parse the spec and install declared resources (dependencies, files,
+symlinks, treemacs workspaces).
+
+See Info node `(declarative-project-mode)' or the project README
+for the full `.project' file format."
   :lighter " DPM"
   :group 'declarative-project
   :keymap (let ((map (make-sparse-keymap)))
             (define-key map (kbd "C-c C-c i")
-                        #'declarative-project--install-project)
+                        #'declarative-project-install)
             map)
   (when (and declarative-project-mode
              declarative-project-auto-install)
-    (declarative-project--install-project)))
+    (declarative-project-install)))
 
 (defun declarative-project--maybe-enable ()
   "Enable `declarative-project-mode' if visiting a .project file."

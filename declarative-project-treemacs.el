@@ -46,7 +46,8 @@ Initialized lazily when the mode is enabled.")
 (defcustom declarative-project-treemacs-autoprune t
   "If non-nil, remove invalid projects from cache on mode init."
   :type 'boolean
-  :group 'declarative-project)
+  :group 'declarative-project
+  :package-version '(declarative-project-treemacs . "0.2.0"))
 
 ;;; --- Backward compatibility ---
 
