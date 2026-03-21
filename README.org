@@ -121,12 +121,13 @@ In =packages.el=:
 
 In =config.el=:
 #+begin_src emacs-lisp
-(use-package! declarative-project-treemacs
-  :after treemacs
+(use-package! declarative-project-mode
   :config
-  (setq declarative-project-treemacs-cache-file
-        (expand-file-name "treemacs-declared-workspaces.el" doom-cache-dir))
-  (declarative-project-treemacs-mode 1))
+  (after! treemacs
+    (require 'declarative-project-treemacs)
+    (setq declarative-project-treemacs-cache-file
+          (expand-file-name "treemacs-declared-workspaces.el" doom-cache-dir))
+    (declarative-project-treemacs-mode 1)))
 #+end_src
 
 *** Spacemacs
