@@ -145,6 +145,10 @@ Binds `project-dir' and `project-file'."
 
   (defun treemacs-add-and-display-current-project-exclusively ()
     "Stub for treemacs-add-and-display-current-project-exclusively."
+    nil)
+
+  (defun treemacs--restore ()
+    "Stub for treemacs--restore (persistence)."
     nil))
 
 ;;; --- Treemacs test macro ---
@@ -155,11 +159,12 @@ Binds `cache-file' to the temporary cache path."
   (declare (indent 0))
   `(let* ((cache-file (make-temp-file "dpm-treemacs-cache-" nil ".el"))
           (declarative-project-treemacs--desired-state nil)
-          (declarative-project-treemacs--cache-file cache-file)
+          (declarative-project-treemacs-cache-file cache-file)
           (declarative-project-treemacs-mode nil)
           (treemacs--current-workspace-stub nil)
           (treemacs-select-functions nil)
-          (treemacs-project-follow-mode nil))
+          (treemacs-project-follow-mode nil)
+          (kill-emacs-hook nil))
      (unwind-protect
          (progn ,@body)
        (put 'treemacs :state-is-restored nil)

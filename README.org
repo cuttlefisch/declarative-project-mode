@@ -109,6 +109,51 @@ When enabled, project installation creates or updates treemacs workspace
 entries. Set =declarative-project-treemacs-autoprune= to =nil= to disable
 automatic removal of stale project entries on mode init.
 
+** Framework-specific configuration
+
+*** Doom Emacs
+
+In =packages.el=:
+#+begin_src emacs-lisp
+(package! declarative-project-mode
+  :recipe (:host github :repo "cuttlefisch/declarative-project-mode"))
+#+end_src
+
+In =config.el=:
+#+begin_src emacs-lisp
+(use-package! declarative-project-treemacs
+  :after treemacs
+  :config
+  (setq declarative-project-treemacs-cache-file
+        (expand-file-name "treemacs-declared-workspaces.el" doom-cache-dir))
+  (declarative-project-treemacs-mode 1))
+#+end_src
+
+*** Spacemacs
+
+In =dotspacemacs-additional-packages=:
+#+begin_src emacs-lisp
+(declarative-project-mode
+ :location (recipe :fetcher github :repo "cuttlefisch/declarative-project-mode"))
+#+end_src
+
+In =dotspacemacs/user-config=:
+#+begin_src emacs-lisp
+(require 'declarative-project-treemacs)
+(setq declarative-project-treemacs-cache-file
+      (expand-file-name "treemacs-declared-workspaces.el" spacemacs-cache-directory))
+(declarative-project-treemacs-mode 1)
+#+end_src
+
+*** Vanilla Emacs
+
+#+begin_src emacs-lisp
+(require 'declarative-project-treemacs)
+(declarative-project-treemacs-mode 1)
+;; Cache file defaults to user-emacs-directory; customize if needed:
+;; (setq declarative-project-treemacs-cache-file "~/.cache/emacs/treemacs-declared-workspaces.el")
+#+end_src
+
 * Spec Reference
 
 | Field                  | Type          | Description                                          |
@@ -129,12 +174,13 @@ to placing the resource in the project root directory.
 |--------------------------------------------+---------+---------------------------------------------------|
 | =declarative-project-auto-install=         | =nil=   | Auto-run installation when mode activates          |
 | =declarative-project-treemacs-autoprune=   | =t=     | Remove stale project entries on treemacs mode init |
+| =declarative-project-treemacs-cache-file=  | =user-emacs-directory= | Path to the workspace cache file |
 
 * Development
 
 #+begin_src shell
 cask install
-make test    # 74 Buttercup specs
+make test    # 96 Buttercup specs
 #+end_src
 
 See [[file:CONTRIBUTING.org][CONTRIBUTING.org]] for the full development guide.

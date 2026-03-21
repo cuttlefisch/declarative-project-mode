@@ -126,6 +126,145 @@
         (expect (treemacs-workspace->is-disabled? ws) :not :to-throw)))))
 
 ;;; ==========================================================================
+;;; cache validation
+;;; ==========================================================================
+
+(describe "cache validation"
+  (it "every entry after save+read is a proper workspace/project struct"
+    (with-treemacs-test-state
+      (let ((proj (treemacs-project->create!
+                   :name "P1" :path "/tmp/p1"
+                   :path-status 'local-readable :is-disabled? nil)))
+        (setq declarative-project-treemacs--desired-state
+              (list (treemacs-workspace->create!
+                     :name "WS1" :projects (list proj))))
+        (declarative-project-treemacs--save-cache)
+        (setq declarative-project-treemacs--desired-state nil)
+        (declarative-project-treemacs--read-cache)
+        (dolist (ws declarative-project-treemacs--desired-state)
+          (expect (treemacs-workspace-p ws) :to-be-truthy)
+          (expect (treemacs-workspace->name ws) :to-be-truthy)
+          (dolist (proj (treemacs-workspace->projects ws))
+            (expect (treemacs-project-p proj) :to-be-truthy)
+            (expect (treemacs-project->name proj) :to-be-truthy)
+            (expect (treemacs-project->path proj) :to-be-truthy))))))
+
+  (it "no duplicate workspace names after repeated assign"
+    (with-treemacs-test-state
+      (declarative-project-treemacs--assign-project
+       (list :name "P1" :path "/tmp/p1"
+             :path-status 'local-readable :is-disabled? nil)
+       "TestWS")
+      (declarative-project-treemacs--assign-project
+       (list :name "P2" :path "/tmp/p2"
+             :path-status 'local-readable :is-disabled? nil)
+       "TestWS")
+      (declarative-project-treemacs--save-cache)
+      (setq declarative-project-treemacs--desired-state nil)
+      (declarative-project-treemacs--read-cache)
+      (let ((names (mapcar #'treemacs-workspace->name
+                           declarative-project-treemacs--desired-state)))
+        (expect (length names) :to-equal (length (delete-dups (copy-sequence names)))))))
+
+  (it "preserves exact project counts across workspaces"
+    (with-treemacs-test-state
+      (setq declarative-project-treemacs--desired-state
+            (list (treemacs-workspace->create!
+                   :name "Alpha"
+                   :projects (list
+                              (treemacs-project->create! :name "A1" :path "/tmp/a1"
+                                                        :path-status 'local-readable :is-disabled? nil)
+                              (treemacs-project->create! :name "A2" :path "/tmp/a2"
+                                                        :path-status 'local-readable :is-disabled? nil)
+                              (treemacs-project->create! :name "A3" :path "/tmp/a3"
+                                                        :path-status 'local-readable :is-disabled? nil)))
+                  (treemacs-workspace->create!
+                   :name "Beta"
+                   :projects (list
+                              (treemacs-project->create! :name "B1" :path "/tmp/b1"
+                                                        :path-status 'local-readable :is-disabled? nil)
+                              (treemacs-project->create! :name "B2" :path "/tmp/b2"
+                                                        :path-status 'local-readable :is-disabled? nil)))))
+      (declarative-project-treemacs--save-cache)
+      (setq declarative-project-treemacs--desired-state nil)
+      (declarative-project-treemacs--read-cache)
+      (let ((alpha (declarative-project-treemacs--workspaces-by-name "Alpha"))
+            (beta (declarative-project-treemacs--workspaces-by-name "Beta")))
+        (expect (length (treemacs-workspace->projects alpha)) :to-equal 3)
+        (expect (length (treemacs-workspace->projects beta)) :to-equal 2))))
+
+  (it "unassign persists correctly through save+read"
+    (with-treemacs-test-state
+      (let ((proj (treemacs-project->create!
+                   :name "RemoveMe" :path "/tmp/rm"
+                   :path-status 'local-readable :is-disabled? nil)))
+        (setq declarative-project-treemacs--desired-state
+              (list (treemacs-workspace->create!
+                     :name "WS" :projects (list proj))))
+        (declarative-project-treemacs--unassign-project "RemoveMe" "WS")
+        ;; save+read cycle
+        (setq declarative-project-treemacs--desired-state nil)
+        (declarative-project-treemacs--read-cache)
+        (let ((ws (declarative-project-treemacs--workspaces-by-name "WS")))
+          (expect (treemacs-workspace->projects ws) :to-equal nil)))))
+
+  (it "recovers gracefully from corrupted cache file"
+    (with-treemacs-test-state
+      (with-temp-file cache-file
+        (insert "this is not valid elisp }{]["))
+      (declarative-project-treemacs--read-cache)
+      (expect declarative-project-treemacs--desired-state :to-be-truthy)
+      (expect (length declarative-project-treemacs--desired-state) :to-equal 1)
+      (expect (treemacs-workspace->name
+               (car declarative-project-treemacs--desired-state))
+              :to-equal "Default")))
+
+  (it "recovers gracefully from empty cache file"
+    (with-treemacs-test-state
+      ;; Create a 0-byte file
+      (with-temp-file cache-file
+        (erase-buffer))
+      (declarative-project-treemacs--read-cache)
+      (expect declarative-project-treemacs--desired-state :to-be-truthy)
+      (expect (length declarative-project-treemacs--desired-state) :to-equal 1)
+      (expect (treemacs-workspace->name
+               (car declarative-project-treemacs--desired-state))
+              :to-equal "Default")))
+
+  (it "save output contains expected setq form"
+    (with-treemacs-test-state
+      (setq declarative-project-treemacs--desired-state
+            (list (treemacs-workspace->create! :name "Check" :projects nil)))
+      (declarative-project-treemacs--save-cache)
+      (let ((content (with-temp-buffer
+                       (insert-file-contents cache-file)
+                       (buffer-string))))
+        (expect content :to-match "setq declarative-project-treemacs--desired-state"))))
+
+  (it "double round-trip produces identical cache file content"
+    (with-treemacs-test-state
+      (setq declarative-project-treemacs--desired-state
+            (list (treemacs-workspace->create!
+                   :name "Stable"
+                   :projects (list (treemacs-project->create!
+                                    :name "SP" :path "/tmp/sp"
+                                    :path-status 'local-readable :is-disabled? nil)))))
+      (declarative-project-treemacs--save-cache)
+      (setq declarative-project-treemacs--desired-state nil)
+      (declarative-project-treemacs--read-cache)
+      (declarative-project-treemacs--save-cache)
+      (let ((first-content (with-temp-buffer
+                             (insert-file-contents cache-file)
+                             (buffer-string))))
+        (setq declarative-project-treemacs--desired-state nil)
+        (declarative-project-treemacs--read-cache)
+        (declarative-project-treemacs--save-cache)
+        (let ((second-content (with-temp-buffer
+                                (insert-file-contents cache-file)
+                                (buffer-string))))
+          (expect first-content :to-equal second-content))))))
+
+;;; ==========================================================================
 ;;; declarative-project-treemacs--assign-project
 ;;; ==========================================================================
 
@@ -328,16 +467,50 @@
                 :not :to-have-been-called)))))
 
 ;;; ==========================================================================
+;;; declarative-project-treemacs--sync-workspace-list
+;;; ==========================================================================
+
+(describe "declarative-project-treemacs--sync-workspace-list"
+  (it "sets treemacs--workspaces to desired state"
+    (with-treemacs-test-state
+      (let ((state (list (treemacs-workspace->create!
+                           :name "SyncTest" :projects nil))))
+        (setq declarative-project-treemacs--desired-state state)
+        (declarative-project-treemacs--sync-workspace-list)
+        (expect treemacs--workspaces :to-equal state))))
+
+  (it "sets :state-is-restored flag"
+    (with-treemacs-test-state
+      (let ((state (list (treemacs-workspace->create!
+                           :name "FlagTest" :projects nil))))
+        (setq declarative-project-treemacs--desired-state state)
+        (expect (get 'treemacs :state-is-restored) :not :to-be-truthy)
+        (declarative-project-treemacs--sync-workspace-list)
+        (expect (get 'treemacs :state-is-restored) :to-be t))))
+
+  (it "does not change the current workspace in scope shelf"
+    (with-treemacs-test-state
+      (let* ((persp-ws (treemacs-workspace->create!
+                         :name "Perspective main" :projects nil))
+             (declared-ws (treemacs-workspace->create!
+                            :name "MyProject" :projects nil)))
+        (setf (treemacs-current-workspace) persp-ws)
+        (setq declarative-project-treemacs--desired-state (list declared-ws))
+        (declarative-project-treemacs--sync-workspace-list)
+        ;; Current workspace should still be persp-ws, not overridden
+        (expect (treemacs-current-workspace) :to-be persp-ws)))))
+
+;;; ==========================================================================
 ;;; declarative-project-treemacs--on-select
 ;;; ==========================================================================
 
 (describe "declarative-project-treemacs--on-select"
-  (it "calls override-workspaces regardless of reason argument"
+  (it "calls sync-workspace-list regardless of reason argument"
     (with-treemacs-test-state
-      (spy-on 'declarative-project-treemacs--override-workspaces)
+      (spy-on 'declarative-project-treemacs--sync-workspace-list)
       (declarative-project-treemacs--on-select 'exists)
       (declarative-project-treemacs--on-select 'none)
-      (expect 'declarative-project-treemacs--override-workspaces
+      (expect 'declarative-project-treemacs--sync-workspace-list
               :to-have-been-called-times 2))))
 
 ;;; ==========================================================================
@@ -356,7 +529,7 @@
               (expect (memq #'declarative-project-treemacs--assign-declared-project
                             declarative-project--apply-treemacs-workspaces-hook)
                       :to-be-truthy)
-              (expect (memq #'declarative-project-treemacs--override-workspaces
+              (expect (memq #'declarative-project-treemacs--sync-workspace-list
                             treemacs-switch-workspace-hook)
                       :to-be-truthy)
               (expect (memq #'declarative-project-treemacs--on-select
@@ -374,7 +547,7 @@
         (expect (memq #'declarative-project-treemacs--assign-declared-project
                       declarative-project--apply-treemacs-workspaces-hook)
                 :to-equal nil)
-        (expect (memq #'declarative-project-treemacs--override-workspaces
+        (expect (memq #'declarative-project-treemacs--sync-workspace-list
                       treemacs-switch-workspace-hook)
                 :to-equal nil)
         (expect (memq #'declarative-project-treemacs--on-select
@@ -424,27 +597,157 @@
 ;;; ==========================================================================
 
 (describe "declarative-project-treemacs--around-persp-ensure"
-  (it "calls override-workspaces when mode is active"
+  (it "calls sync-workspace-list when mode is active"
     (with-treemacs-test-state
       (let ((declarative-project-treemacs-mode t))
-        (spy-on 'declarative-project-treemacs--override-workspaces)
+        (spy-on 'declarative-project-treemacs--sync-workspace-list)
         (let ((orig-called nil))
           (declarative-project-treemacs--around-persp-ensure
            (lambda () (setq orig-called t)))
-          (expect 'declarative-project-treemacs--override-workspaces
+          (expect 'declarative-project-treemacs--sync-workspace-list
                   :to-have-been-called)
           (expect orig-called :to-equal nil)))))
 
   (it "calls orig-fn when mode is not active"
     (with-treemacs-test-state
       (let ((declarative-project-treemacs-mode nil))
-        (spy-on 'declarative-project-treemacs--override-workspaces)
+        (spy-on 'declarative-project-treemacs--sync-workspace-list)
         (let ((orig-called nil))
           (declarative-project-treemacs--around-persp-ensure
            (lambda () (setq orig-called t)))
-          (expect 'declarative-project-treemacs--override-workspaces
+          (expect 'declarative-project-treemacs--sync-workspace-list
                   :not :to-have-been-called)
           (expect orig-called :to-equal t))))))
+
+;;; ==========================================================================
+;;; Persistence defense (3-layer)
+;;; ==========================================================================
+
+(describe "persistence defense: pre-emption flag (Layer 1)"
+  (it "sets :state-is-restored on enable"
+    (with-treemacs-test-state
+      (let ((declarative-project--apply-treemacs-workspaces-hook nil)
+            (treemacs-switch-workspace-hook nil)
+            (treemacs-select-functions nil))
+        (put 'treemacs :state-is-restored nil)
+        (declarative-project-treemacs-mode 1)
+        (unwind-protect
+            (expect (get 'treemacs :state-is-restored) :to-be t)
+          (declarative-project-treemacs-mode -1)))))
+
+  (it "clears :state-is-restored on disable"
+    (with-treemacs-test-state
+      (let ((declarative-project--apply-treemacs-workspaces-hook nil)
+            (treemacs-switch-workspace-hook nil)
+            (treemacs-select-functions nil))
+        (declarative-project-treemacs-mode 1)
+        (declarative-project-treemacs-mode -1)
+        (expect (get 'treemacs :state-is-restored) :to-be nil)))))
+
+(describe "persistence defense: after-restore advice (Layer 2)"
+  (it "re-applies desired state when mode is active"
+    (with-treemacs-test-state
+      (let ((declarative-project-treemacs-mode t))
+        (spy-on 'declarative-project-treemacs--override-workspaces)
+        (declarative-project-treemacs--after-treemacs-restore)
+        (expect 'declarative-project-treemacs--override-workspaces
+                :to-have-been-called))))
+
+  (it "does nothing when mode is inactive"
+    (with-treemacs-test-state
+      (let ((declarative-project-treemacs-mode nil))
+        (spy-on 'declarative-project-treemacs--override-workspaces)
+        (declarative-project-treemacs--after-treemacs-restore)
+        (expect 'declarative-project-treemacs--override-workspaces
+                :not :to-have-been-called))))
+
+  (it "is added as advice on enable and removed on disable"
+    (with-treemacs-test-state
+      (let ((declarative-project--apply-treemacs-workspaces-hook nil)
+            (treemacs-switch-workspace-hook nil)
+            (treemacs-select-functions nil))
+        (declarative-project-treemacs-mode 1)
+        (unwind-protect
+            (expect (advice-member-p
+                     #'declarative-project-treemacs--after-treemacs-restore
+                     'treemacs--restore)
+                    :to-be-truthy)
+          (declarative-project-treemacs-mode -1))
+        (expect (advice-member-p
+                 #'declarative-project-treemacs--after-treemacs-restore
+                 'treemacs--restore)
+                :to-equal nil)))))
+
+(describe "persistence defense: kill-emacs sync (Layer 3)"
+  (it "syncs desired state to treemacs--workspaces"
+    (with-treemacs-test-state
+      (let ((declarative-project-treemacs-mode t)
+            (treemacs--workspaces nil))
+        (setq declarative-project-treemacs--desired-state
+              (list (treemacs-workspace->create! :name "Synced" :projects nil)))
+        (declarative-project-treemacs--sync-before-persist)
+        (expect (treemacs-workspace->name (car treemacs--workspaces))
+                :to-equal "Synced"))))
+
+  (it "adds kill-emacs-hook on enable and removes on disable"
+    (with-treemacs-test-state
+      (let ((declarative-project--apply-treemacs-workspaces-hook nil)
+            (treemacs-switch-workspace-hook nil)
+            (treemacs-select-functions nil))
+        (declarative-project-treemacs-mode 1)
+        (unwind-protect
+            (expect (memq #'declarative-project-treemacs--sync-before-persist
+                          kill-emacs-hook)
+                    :to-be-truthy)
+          (declarative-project-treemacs-mode -1))
+        (expect (memq #'declarative-project-treemacs--sync-before-persist
+                      kill-emacs-hook)
+                :to-equal nil)))))
+
+;;; ==========================================================================
+;;; declarative-project-treemacs-reset-cache
+;;; ==========================================================================
+
+(describe "declarative-project-treemacs-reset-cache"
+  (it "resets desired state to single Default workspace"
+    (with-treemacs-test-state
+      (setq declarative-project-treemacs--desired-state
+            (list (treemacs-workspace->create! :name "Stale1" :projects nil)
+                  (treemacs-workspace->create! :name "Stale2" :projects nil)))
+      (declarative-project-treemacs-reset-cache)
+      (expect (length declarative-project-treemacs--desired-state) :to-equal 1)
+      (expect (treemacs-workspace->name
+               (car declarative-project-treemacs--desired-state))
+              :to-equal "Default")))
+
+  (it "saves cache file after reset"
+    (with-treemacs-test-state
+      (setq declarative-project-treemacs--desired-state
+            (list (treemacs-workspace->create! :name "Old" :projects nil)))
+      (declarative-project-treemacs-reset-cache)
+      ;; Re-read from disk and verify it was saved
+      (setq declarative-project-treemacs--desired-state nil)
+      (declarative-project-treemacs--read-cache)
+      (expect (length declarative-project-treemacs--desired-state) :to-equal 1)
+      (expect (treemacs-workspace->name
+               (car declarative-project-treemacs--desired-state))
+              :to-equal "Default")))
+
+  (it "calls --override-workspaces when mode is active"
+    (with-treemacs-test-state
+      (let ((declarative-project-treemacs-mode t))
+        (spy-on 'declarative-project-treemacs--override-workspaces)
+        (declarative-project-treemacs-reset-cache)
+        (expect 'declarative-project-treemacs--override-workspaces
+                :to-have-been-called))))
+
+  (it "does not call --override-workspaces when mode is inactive"
+    (with-treemacs-test-state
+      (let ((declarative-project-treemacs-mode nil))
+        (spy-on 'declarative-project-treemacs--override-workspaces)
+        (declarative-project-treemacs-reset-cache)
+        (expect 'declarative-project-treemacs--override-workspaces
+                :not :to-have-been-called)))))
 
 ;;; ==========================================================================
 ;;; Advice registration (mode enable/disable)

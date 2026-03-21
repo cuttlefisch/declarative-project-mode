@@ -1,6 +1,27 @@
 #+title: Changelog
 #+author: Hayden Stanko
 
+* 0.3.2 — 2026-03-21
+
+** New features
+- =declarative-project-treemacs-cache-file= defcustom :: The cache file
+  path is now a =defcustom= with framework-specific guidance for Doom
+  and Spacemacs users.  A backward-compat alias preserves the old
+  internal name.
+- =declarative-project-treemacs-reset-cache= :: Interactive command to
+  reset the workspace cache to a single empty Default workspace.
+
+** Bug fixes
+- Hardened =--read-cache= against corrupted/empty files :: Empty (0-byte)
+  or malformed cache files now fall back to minimal desired state instead
+  of erroring.  Corrupt files trigger a =display-warning= and auto-reset.
+
+** Tests
+- 8 new cache validation specs: struct integrity, dedup, multi-workspace
+  project counts, unassign round-trip, corrupt/empty file recovery, setq
+  form validation, and normalization idempotency.
+- Total spec count: 96 (up from 74 in 0.3.1).
+
 * 0.3.1 — 2026-03-21
 
 ** Bug fixes
