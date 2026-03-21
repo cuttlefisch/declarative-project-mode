@@ -175,7 +175,11 @@ Accepts both `project-name' and `name' as key names."
              (root-dir (declarative-project-root-directory project-resources)))
     (run-hook-with-args 'declarative-project--apply-treemacs-workspaces-hook
                         project-resources)
-    (when (featurep 'treemacs)
+    ;; When declarative-project-treemacs-mode is active, the hook above
+    ;; handles workspace assignment via the desired-state model.  Only
+    ;; fall back to the native treemacs API when the extension mode is off.
+    (when (and (featurep 'treemacs)
+              (not (bound-and-true-p declarative-project-treemacs-mode)))
       (dolist (workspace project-workspaces)
         (let ((project-name (or (declarative-project-name project-resources) workspace)))
           (message "Adding project to treemacs workspace: %s" workspace)

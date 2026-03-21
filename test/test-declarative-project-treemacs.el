@@ -232,6 +232,15 @@
         (declarative-project-treemacs--override-workspaces)
         (expect treemacs--workspaces :to-equal state))))
 
+  (it "sets :state-is-restored flag to prevent treemacs persist-file restore"
+    (with-treemacs-test-state
+      (let ((state (list (treemacs-workspace->create!
+                          :name "FlagTest" :projects nil))))
+        (setq declarative-project-treemacs--desired-state state)
+        (expect (get 'treemacs :state-is-restored) :not :to-be-truthy)
+        (declarative-project-treemacs--override-workspaces)
+        (expect (get 'treemacs :state-is-restored) :to-be t))))
+
   (it "updates current workspace to matching object in desired state"
     (with-treemacs-test-state
       (let* ((old-ws (treemacs-workspace->create! :name "MyWS" :projects nil))
@@ -241,7 +250,37 @@
         (setq declarative-project-treemacs--desired-state (list new-ws))
         (declarative-project-treemacs--override-workspaces)
         ;; Current workspace should now be the new object, not the old one
-        (expect (treemacs-current-workspace) :to-be new-ws)))))
+        (expect (treemacs-current-workspace) :to-be new-ws))))
+
+  (it "falls back to first desired workspace when current name is unknown"
+    (with-treemacs-test-state
+      (let* ((unknown-ws (treemacs-workspace->create! :name "Perspective main" :projects nil))
+             (target-ws (treemacs-workspace->create! :name "MyProject" :projects nil)))
+        (setf (treemacs-current-workspace) unknown-ws)
+        (setq declarative-project-treemacs--desired-state (list target-ws))
+        (declarative-project-treemacs--override-workspaces)
+        (expect (treemacs-current-workspace) :to-be target-ws))))
+
+  (it "falls back to first desired workspace when current workspace is nil"
+    (with-treemacs-test-state
+      (let ((target-ws (treemacs-workspace->create! :name "MyProject" :projects nil)))
+        (setf (treemacs-current-workspace) nil)
+        (setq declarative-project-treemacs--desired-state (list target-ws))
+        (declarative-project-treemacs--override-workspaces)
+        (expect (treemacs-current-workspace) :to-be target-ws))))
+
+  (it "clears buffer project cache when switching workspace"
+    (with-treemacs-test-state
+      (let* ((old-ws (treemacs-workspace->create! :name "Old" :projects nil))
+             (new-ws (treemacs-workspace->create! :name "New" :projects nil)))
+        (setf (treemacs-current-workspace) old-ws)
+        (setq declarative-project-treemacs--desired-state (list new-ws))
+        ;; Set a buffer-local project cache value to verify it gets cleared
+        (setq-local treemacs--project-of-buffer 'stale-project)
+        (declarative-project-treemacs--override-workspaces)
+        ;; treemacs--invalidate-buffer-project-cache is a define-inline that
+        ;; clears treemacs--project-of-buffer in all buffers
+        (expect treemacs--project-of-buffer :to-be nil)))))
 
 ;;; ==========================================================================
 ;;; declarative-project-treemacs--assign-declared-project (hook integration)
@@ -274,6 +313,19 @@
                 :not :to-have-been-called)))))
 
 ;;; ==========================================================================
+;;; declarative-project-treemacs--on-select
+;;; ==========================================================================
+
+(describe "declarative-project-treemacs--on-select"
+  (it "calls override-workspaces regardless of reason argument"
+    (with-treemacs-test-state
+      (spy-on 'declarative-project-treemacs--override-workspaces)
+      (declarative-project-treemacs--on-select 'exists)
+      (declarative-project-treemacs--on-select 'none)
+      (expect 'declarative-project-treemacs--override-workspaces
+              :to-have-been-called-times 2))))
+
+;;; ==========================================================================
 ;;; declarative-project-treemacs-mode (hook add/remove)
 ;;; ==========================================================================
 
@@ -281,7 +333,8 @@
   (it "adds hooks when enabled"
     (with-treemacs-test-state
       (let ((declarative-project--apply-treemacs-workspaces-hook nil)
-            (treemacs-switch-workspace-hook nil))
+            (treemacs-switch-workspace-hook nil)
+            (treemacs-select-functions nil))
         (declarative-project-treemacs-mode 1)
         (unwind-protect
             (progn
@@ -290,13 +343,17 @@
                       :to-be-truthy)
               (expect (memq #'declarative-project-treemacs--override-workspaces
                             treemacs-switch-workspace-hook)
+                      :to-be-truthy)
+              (expect (memq #'declarative-project-treemacs--on-select
+                            treemacs-select-functions)
                       :to-be-truthy))
           (declarative-project-treemacs-mode -1)))))
 
   (it "removes hooks when disabled"
     (with-treemacs-test-state
       (let ((declarative-project--apply-treemacs-workspaces-hook nil)
-            (treemacs-switch-workspace-hook nil))
+            (treemacs-switch-workspace-hook nil)
+            (treemacs-select-functions nil))
         (declarative-project-treemacs-mode 1)
         (declarative-project-treemacs-mode -1)
         (expect (memq #'declarative-project-treemacs--assign-declared-project
@@ -304,6 +361,104 @@
                 :to-equal nil)
         (expect (memq #'declarative-project-treemacs--override-workspaces
                       treemacs-switch-workspace-hook)
+                :to-equal nil)
+        (expect (memq #'declarative-project-treemacs--on-select
+                      treemacs-select-functions)
+                :to-equal nil))))
+
+  (it "disables treemacs-project-follow-mode when enabled"
+    (with-treemacs-test-state
+      (let ((declarative-project--apply-treemacs-workspaces-hook nil)
+            (treemacs-switch-workspace-hook nil)
+            (treemacs-select-functions nil)
+            (treemacs-project-follow-mode t))
+        (spy-on 'treemacs-project-follow-mode)
+        (declarative-project-treemacs-mode 1)
+        (unwind-protect
+            (expect 'treemacs-project-follow-mode
+                    :to-have-been-called-with -1)
+          (declarative-project-treemacs-mode -1))))))
+
+;;; ==========================================================================
+;;; declarative-project-treemacs--around-exclusive-display
+;;; ==========================================================================
+
+(describe "declarative-project-treemacs--around-exclusive-display"
+  (it "calls treemacs-select-window when mode is active"
+    (with-treemacs-test-state
+      (let ((declarative-project-treemacs-mode t))
+        (spy-on 'treemacs-select-window)
+        (let ((orig-called nil))
+          (declarative-project-treemacs--around-exclusive-display
+           (lambda () (setq orig-called t)))
+          (expect 'treemacs-select-window :to-have-been-called)
+          (expect orig-called :to-equal nil)))))
+
+  (it "calls orig-fn when mode is not active"
+    (with-treemacs-test-state
+      (let ((declarative-project-treemacs-mode nil))
+        (spy-on 'treemacs-select-window)
+        (let ((orig-called nil))
+          (declarative-project-treemacs--around-exclusive-display
+           (lambda () (setq orig-called t)))
+          (expect 'treemacs-select-window :not :to-have-been-called)
+          (expect orig-called :to-equal t))))))
+
+;;; ==========================================================================
+;;; declarative-project-treemacs--around-persp-ensure
+;;; ==========================================================================
+
+(describe "declarative-project-treemacs--around-persp-ensure"
+  (it "calls override-workspaces when mode is active"
+    (with-treemacs-test-state
+      (let ((declarative-project-treemacs-mode t))
+        (spy-on 'declarative-project-treemacs--override-workspaces)
+        (let ((orig-called nil))
+          (declarative-project-treemacs--around-persp-ensure
+           (lambda () (setq orig-called t)))
+          (expect 'declarative-project-treemacs--override-workspaces
+                  :to-have-been-called)
+          (expect orig-called :to-equal nil)))))
+
+  (it "calls orig-fn when mode is not active"
+    (with-treemacs-test-state
+      (let ((declarative-project-treemacs-mode nil))
+        (spy-on 'declarative-project-treemacs--override-workspaces)
+        (let ((orig-called nil))
+          (declarative-project-treemacs--around-persp-ensure
+           (lambda () (setq orig-called t)))
+          (expect 'declarative-project-treemacs--override-workspaces
+                  :not :to-have-been-called)
+          (expect orig-called :to-equal t))))))
+
+;;; ==========================================================================
+;;; Advice registration (mode enable/disable)
+;;; ==========================================================================
+
+(describe "declarative-project-treemacs-mode advice"
+  (it "registers exclusive-display advice when enabled"
+    (with-treemacs-test-state
+      (let ((declarative-project--apply-treemacs-workspaces-hook nil)
+            (treemacs-switch-workspace-hook nil)
+            (treemacs-select-functions nil))
+        (declarative-project-treemacs-mode 1)
+        (unwind-protect
+            (expect (advice-member-p
+                     #'declarative-project-treemacs--around-exclusive-display
+                     'treemacs-add-and-display-current-project-exclusively)
+                    :to-be-truthy)
+          (declarative-project-treemacs-mode -1)))))
+
+  (it "removes exclusive-display advice when disabled"
+    (with-treemacs-test-state
+      (let ((declarative-project--apply-treemacs-workspaces-hook nil)
+            (treemacs-switch-workspace-hook nil)
+            (treemacs-select-functions nil))
+        (declarative-project-treemacs-mode 1)
+        (declarative-project-treemacs-mode -1)
+        (expect (advice-member-p
+                 #'declarative-project-treemacs--around-exclusive-display
+                 'treemacs-add-and-display-current-project-exclusively)
                 :to-equal nil)))))
 
 (provide 'test-declarative-project-treemacs)

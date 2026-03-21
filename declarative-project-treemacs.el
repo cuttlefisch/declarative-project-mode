@@ -201,21 +201,55 @@ After loading, normalizes all structs to the current layout."
 ;;; --- Workspace override ---
 
 (declare-function treemacs-current-workspace "treemacs-workspaces" ())
+(declare-function treemacs--invalidate-buffer-project-cache "treemacs-workspaces" ())
+(declare-function treemacs-select-window "treemacs" (&optional arg))
+(declare-function treemacs-persp--ensure-workspace-exists "treemacs-persp" ())
 
 (defun declarative-project-treemacs--override-workspaces ()
   "Set treemacs workspaces to the desired state.
 Also updates treemacs's scope shelf so the current workspace points
-to the corresponding object in the desired state list.  Without this,
-the scope shelf retains a stale reference and treemacs falls back to
-directory browsing instead of showing workspace projects."
+to the corresponding object in the desired state list.  When the
+current workspace name is not found in the desired state (e.g. a
+persp-created workspace), falls back to the first desired workspace.
+Prevents treemacs from restoring its persist file by setting the
+`:state-is-restored' flag after populating the workspace list."
   (setq treemacs--workspaces declarative-project-treemacs--desired-state)
+  ;; Prevent treemacs--maybe-load-workspaces from overwriting our state.
+  ;; This mode takes full control of the workspace list, so we
+  ;; intentionally suppress treemacs's one-time persist-file restore.
+  (put 'treemacs :state-is-restored t)
+  ;; Now safe to call treemacs-current-workspace — the lazy-load is a no-op.
   (condition-case nil
-      (when-let* ((current (treemacs-current-workspace))
-                  (name (treemacs-workspace->name current))
-                  (updated (declarative-project-treemacs--workspaces-by-name name)))
-        (unless (eq current updated)
-          (setf (treemacs-current-workspace) updated)))
-    (error nil)))
+      (let* ((current (treemacs-current-workspace))
+             (name (and current (treemacs-workspace->name current)))
+             (target (or (and name (declarative-project-treemacs--workspaces-by-name name))
+                         (car declarative-project-treemacs--desired-state))))
+        (when (and target (not (eq current target)))
+          (setf (treemacs-current-workspace) target)
+          (treemacs--invalidate-buffer-project-cache)))
+    (error nil))
+  ;; Re-render the treemacs buffer so it reflects the updated workspace.
+  (when (treemacs-get-local-buffer)
+    (treemacs--consolidate-projects)))
+
+(defun declarative-project-treemacs--on-select (_reason)
+  "Re-apply declared workspaces after treemacs window is selected.
+Called via `treemacs-select-functions'; REASON is ignored."
+  (declarative-project-treemacs--override-workspaces))
+
+(defun declarative-project-treemacs--around-exclusive-display (orig-fn)
+  "Show treemacs without modifying workspace content when our mode is active.
+ORIG-FN is `treemacs-add-and-display-current-project-exclusively'."
+  (if declarative-project-treemacs-mode
+      (treemacs-select-window)
+    (funcall orig-fn)))
+
+(defun declarative-project-treemacs--around-persp-ensure (orig-fn)
+  "Use our workspace override instead of persp workspace creation.
+ORIG-FN is `treemacs-persp--ensure-workspace-exists'."
+  (if declarative-project-treemacs-mode
+      (declarative-project-treemacs--override-workspaces)
+    (funcall orig-fn)))
 
 ;;; --- Hook integration ---
 
@@ -245,14 +279,29 @@ The desired state of workspaces is tracked in a central cache inside
 `user-emacs-directory'.  When enabled, treemacs workspaces are overridden
 with the declared desired state.
 
-Note: this mode currently takes full control of the treemacs workspace
-list and is still experimental."
+Note: this mode takes full control of the treemacs workspace list.
+It is incompatible with `treemacs-project-follow-mode' (disabled
+automatically).  It also overrides
+`treemacs-add-and-display-current-project-exclusively' (used by
+Doom's `+treemacs/toggle') and suppresses `treemacs-persp' workspace
+creation when active."
   :init-value nil
   :global t
   :group 'declarative-project
   :lighter " TDW"
   (if declarative-project-treemacs-mode
       (progn
+        ;; treemacs-project-follow-mode replaces workspace content with the
+        ;; current project on an idle timer, which conflicts with our
+        ;; workspace ownership.  Disable it when this mode is active.
+        (when (bound-and-true-p treemacs-project-follow-mode)
+          (treemacs-project-follow-mode -1)
+          (message "declarative-project-treemacs-mode: disabled treemacs-project-follow-mode (incompatible)"))
+        (advice-add 'treemacs-add-and-display-current-project-exclusively
+                    :around #'declarative-project-treemacs--around-exclusive-display)
+        (when (fboundp 'treemacs-persp--ensure-workspace-exists)
+          (advice-add 'treemacs-persp--ensure-workspace-exists
+                      :around #'declarative-project-treemacs--around-persp-ensure))
         (declarative-project-treemacs--read-cache)
         (when declarative-project-treemacs-autoprune
           (declarative-project-treemacs--prune-invalid-projects))
@@ -260,12 +309,21 @@ list and is still experimental."
         (add-hook 'declarative-project--apply-treemacs-workspaces-hook
                   #'declarative-project-treemacs--assign-declared-project)
         (add-hook 'treemacs-switch-workspace-hook
-                  #'declarative-project-treemacs--override-workspaces))
+                  #'declarative-project-treemacs--override-workspaces)
+        (add-hook 'treemacs-select-functions
+                  #'declarative-project-treemacs--on-select))
     (declarative-project-treemacs--save-cache)
+    (advice-remove 'treemacs-add-and-display-current-project-exclusively
+                   #'declarative-project-treemacs--around-exclusive-display)
+    (when (fboundp 'treemacs-persp--ensure-workspace-exists)
+      (advice-remove 'treemacs-persp--ensure-workspace-exists
+                     #'declarative-project-treemacs--around-persp-ensure))
     (remove-hook 'declarative-project--apply-treemacs-workspaces-hook
                  #'declarative-project-treemacs--assign-declared-project)
     (remove-hook 'treemacs-switch-workspace-hook
-                 #'declarative-project-treemacs--override-workspaces)))
+                 #'declarative-project-treemacs--override-workspaces)
+    (remove-hook 'treemacs-select-functions
+                 #'declarative-project-treemacs--on-select)))
 
 (defalias 'treemacs-declarative-workspaces-mode #'declarative-project-treemacs-mode)
 

@@ -113,7 +113,24 @@ Binds `project-dir' and `project-file'."
   (defun treemacs-find-workspace-by-name (_name) nil)
   (defun treemacs-do-add-project-to-workspace (_path _name) nil)
   (defvar treemacs-switch-workspace-hook nil
-    "Stub for treemacs workspace switch hook."))
+    "Stub for treemacs workspace switch hook.")
+
+  (defvar treemacs-select-functions nil
+    "Stub for treemacs select functions hook.")
+
+  (defvar treemacs-project-follow-mode nil
+    "Stub for treemacs-project-follow-mode.")
+
+  (defvar-local treemacs--project-of-buffer nil
+    "Stub for treemacs buffer-local project cache.")
+
+  (defun treemacs-select-window (&optional _arg)
+    "Stub for treemacs-select-window."
+    nil)
+
+  (defun treemacs-add-and-display-current-project-exclusively ()
+    "Stub for treemacs-add-and-display-current-project-exclusively."
+    nil))
 
 ;;; --- Treemacs test macro ---
 
@@ -125,9 +142,12 @@ Binds `cache-file' to the temporary cache path."
           (declarative-project-treemacs--desired-state nil)
           (declarative-project-treemacs--cache-file cache-file)
           (declarative-project-treemacs-mode nil)
-          (treemacs--current-workspace-stub nil))
+          (treemacs--current-workspace-stub nil)
+          (treemacs-select-functions nil)
+          (treemacs-project-follow-mode nil))
      (unwind-protect
          (progn ,@body)
+       (put 'treemacs :state-is-restored nil)
        (when (file-exists-p cache-file)
          (delete-file cache-file)))))
 
