@@ -2,8 +2,8 @@
 ;;
 ;; Copyright (C) 2023 Hayden Stanko
 ;;
-;; Author: Hayden Stanko <hayden@cuttle.codes>
-;; Maintainer: Hayden Stanko <hayden@cuttle.codes>
+;; Author: Hayden Stanko <system.cuttle@gmail.com>
+;; Maintainer: Hayden Stanko <system.cuttle@gmail.com>
 ;; Created: January 13, 2023
 ;; Modified: March 20, 2026
 ;; Version: 0.3.0
