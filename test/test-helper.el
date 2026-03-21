@@ -1,5 +1,20 @@
 ;;; test-helper.el --- Test helpers for declarative-project-mode -*- lexical-binding: t -*-
-
+;;
+;; Copyright (C) 2023 Hayden Stanko
+;;
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+;;
 ;;; Commentary:
 ;; Fixtures, macros, and stubs for Buttercup tests.
 
@@ -80,14 +95,82 @@ Binds `project-dir' and `project-file'."
 
 ;;; --- Treemacs stubs ---
 
-;; Stub treemacs functions so tests don't require treemacs
+;; Stub treemacs structs and functions so tests don't require treemacs.
+;; Real treemacs uses cl-defstruct; we replicate just enough for the
+;; treemacs extension module to work.
+
 (unless (featurep 'treemacs)
+  ;; --- Structs ---
+  (cl-defstruct (treemacs-workspace (:constructor treemacs-workspace->create!))
+    name projects is-disabled?)
+
+  (cl-defstruct (treemacs-project (:constructor treemacs-project->create!))
+    name path path-status is-disabled?)
+
+  ;; --- Workspace API stubs ---
+  (defvar treemacs--workspaces nil
+    "Stub for treemacs workspace list.")
+
+  (defvar treemacs-override-workspace nil
+    "Stub for treemacs workspace override variable.")
+
+  (defvar treemacs--current-workspace-stub nil
+    "Stub storage for current workspace in tests.")
+
+  (defun treemacs-current-workspace ()
+    "Stub: return current workspace."
+    treemacs--current-workspace-stub)
+
+  (gv-define-setter treemacs-current-workspace (val)
+    `(setq treemacs--current-workspace-stub ,val))
+
   (defun treemacs-do-create-workspace (&optional _name) '(success nil))
   (defun treemacs-find-workspace-by-name (_name) nil)
-  (defmacro treemacs-with-workspace (_ws &rest body)
-    (declare (indent 1))
-    `(progn ,@body))
-  (defun treemacs-do-add-project-to-workspace (_path _name) nil))
+  (defun treemacs-do-add-project-to-workspace (_path _name) nil)
+  (defvar treemacs-switch-workspace-hook nil
+    "Stub for treemacs workspace switch hook.")
+
+  (defvar treemacs-select-functions nil
+    "Stub for treemacs select functions hook.")
+
+  (defvar treemacs-project-follow-mode nil
+    "Stub for treemacs-project-follow-mode.")
+
+  (defvar-local treemacs--project-of-buffer nil
+    "Stub for treemacs buffer-local project cache.")
+
+  (defun treemacs-select-window (&optional _arg)
+    "Stub for treemacs-select-window."
+    nil)
+
+  (defun treemacs-add-and-display-current-project-exclusively ()
+    "Stub for treemacs-add-and-display-current-project-exclusively."
+    nil)
+
+  (defun treemacs--restore ()
+    "Stub for treemacs--restore (persistence)."
+    nil))
+
+;;; --- Treemacs test macro ---
+
+(defmacro with-treemacs-test-state (&rest body)
+  "Execute BODY with a clean treemacs desired-state and temporary cache file.
+Binds `cache-file' to the temporary cache path."
+  (declare (indent 0))
+  `(let* ((cache-file (make-temp-file "dpm-treemacs-cache-" nil ".el"))
+          (declarative-project-treemacs--desired-state nil)
+          (declarative-project-treemacs--current-workspace-name nil)
+          (declarative-project-treemacs-cache-file cache-file)
+          (declarative-project-treemacs-mode nil)
+          (treemacs--current-workspace-stub nil)
+          (treemacs-select-functions nil)
+          (treemacs-project-follow-mode nil)
+          (kill-emacs-hook nil))
+     (unwind-protect
+         (progn ,@body)
+       (put 'treemacs :state-is-restored nil)
+       (when (file-exists-p cache-file)
+         (delete-file cache-file)))))
 
 ;;; --- Helper functions ---
 

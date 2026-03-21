@@ -1,11 +1,15 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        emacs-version: ['28.1', '29.4', 'snapshot']
+        emacs-version: ['28.1', '29.4', '30.1', 'snapshot']
     steps:
       - uses: actions/checkout@v4
       - uses: purcell/setup-emacs@master

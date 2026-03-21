@@ -1,0 +1,119 @@
+#+title: Changelog
+#+author: Hayden Stanko
+
+* 0.3.3 — 2026-03-21
+
+** Bug fixes
+- Fix daemon-mode overwriting persisted workspace name on shutdown ::
+  In daemon mode, =delete-frame-functions= fires before =kill-emacs-hook=,
+  destroying the frame's treemacs scope shelf.  =--sync-before-persist=
+  then re-queried =(treemacs-current-workspace)=, which fell back to
+  the wrong workspace and overwrote the correct =--current-workspace-name=.
+  Fixed by (1) persisting the name to disk immediately in
+  =--on-workspace-switch= and (2) removing the re-capture from
+  =--sync-before-persist=.
+
+** Tests
+- 2 new specs: =--on-workspace-switch= disk round-trip, and
+  =--sync-before-persist= daemon scenario (wrong treemacs scope does
+  not overwrite persisted name).
+- Total spec count: 104 (up from 98 in 0.3.2).
+
+* 0.3.2 — 2026-03-21
+
+** New features
+- =declarative-project-treemacs-cache-file= defcustom :: The cache file
+  path is now a =defcustom= with framework-specific guidance for Doom
+  and Spacemacs users.  A backward-compat alias preserves the old
+  internal name.
+- =declarative-project-treemacs-reset-cache= :: Interactive command to
+  reset the workspace cache to a single empty Default workspace.
+
+** Bug fixes
+- Hardened =--read-cache= against corrupted/empty files :: Empty (0-byte)
+  or malformed cache files now fall back to minimal desired state instead
+  of erroring.  Corrupt files trigger a =display-warning= and auto-reset.
+
+** Tests
+- 8 new cache validation specs: struct integrity, dedup, multi-workspace
+  project counts, unassign round-trip, corrupt/empty file recovery, setq
+  form validation, and normalization idempotency.
+- Total spec count: 96 (up from 74 in 0.3.1).
+
+* 0.3.1 — 2026-03-21
+
+** Bug fixes
+- Fix duplicate workspace assignments when treemacs-mode active :: The
+  install function's native treemacs code path was firing alongside the
+  desired-state model, causing duplicate project entries.  The native
+  fallback is now gated behind =(not declarative-project-treemacs-mode)=.
+
+** New features
+- Workspace enforcement via advice :: Two new advice functions
+  (=after treemacs-switch-workspace= and =after treemacs--restore=)
+  re-apply desired state whenever treemacs switches or restores
+  workspaces, preventing external changes from overriding declared
+  assignments.
+
+** Tests
+- 7 new specs for fallback guard, advice lifecycle, and mode
+  registration.  Total spec count: 74 (up from 52).
+
+** Code quality
+- Added GPL-3.0 license headers to all secondary =.el= and test files.
+- Updated =.gitignore= with Emacs lock-file and autoload patterns.
+
+* 0.3.0 — 2026-03-20
+
+** Bug fixes
+- Fix =warn= / =display-warning= mismatch :: All warning calls now use
+  =display-warning= with the ='declarative-project= type symbol, matching
+  existing test expectations and providing structured warning output.
+- Fix treemacs =--unassign-project= nil dereference :: Wrapped workspace
+  lookup in =when-let= so =(treemacs-workspace->projects ws)= is never called
+  on a nil workspace.
+- Remove tab characters from warning format strings.
+
+** New features
+- =declarative-project-install= :: Public interactive command (alias for
+  the internal =--install-project=).  Keymap binding =C-c C-c i= now points
+  to the public name.
+- =;;;###autoload= cookies :: Added to =declarative-project-mode= and
+  =org-babel-execute:declarative-project= for proper lazy-loading via
+  =package.el=.
+
+** Code quality
+- Added =:package-version= to all =defcustom= declarations.
+- Expanded Commentary sections with full =.project= file format reference.
+- Improved docstrings on minor mode, accessor functions, and public API.
+- Deleted legacy ERT test file (=declarative-project-mode-test.el=) that
+  referenced removed API.
+- Added =.dir-locals.el= for development settings.
+
+** Tests
+- 20 new Buttercup specs for =declarative-project-treemacs= module:
+  =--minimal-desired-state=, =--ensure-desired-state=, =--workspaces-by-name=,
+  cache round-trip, =--assign-project= (new workspace, existing, dedup),
+  =--unassign-project= (happy path + nil regression), =--remove-workspace=,
+  =--prune-invalid-projects=, =--override-workspaces=,
+  =--assign-declared-project= (hook integration),
+  =declarative-project-treemacs-mode= (hook add/remove).
+- Expanded =test-helper.el= with =cl-defstruct= stubs for
+  =treemacs-workspace= / =treemacs-project= and =with-treemacs-test-state=
+  macro.
+- Total spec count: 52 (up from 32).
+
+* 0.2.0 — 2026-03-15
+
+** Highlights
+- Rewrote core to use hash-table based =project-resources= instead of
+  =cl-defstruct=.
+- Absorbed =treemacs-declarative-workspaces-mode= into
+  =declarative-project-treemacs.el=.
+- Added =ob-declarative-project.el= for Org-Babel integration.
+- Added =declarative-project--install-from-content= for programmatic /
+  Org-Babel use without a =.project= file on disk.
+- Switched test framework from ERT to Buttercup (32 specs).
+- Replaced =shell-command= with =call-process= for git clone (security).
+- Added CI via GitHub Actions, README, and CONTRIBUTING guide.
+- Dropped =file-name-parent-directory= for Emacs 28.1 compatibility.
