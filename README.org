@@ -134,7 +134,7 @@ to placing the resource in the project root directory.
 
 #+begin_src shell
 cask install
-make test    # 32 Buttercup specs
+make test    # 74 Buttercup specs
 #+end_src
 
 See [[file:CONTRIBUTING.org][CONTRIBUTING.org]] for the full development guide.

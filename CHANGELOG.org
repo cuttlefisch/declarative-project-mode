@@ -1,6 +1,29 @@
 #+title: Changelog
 #+author: Hayden Stanko
 
+* 0.3.1 — 2026-03-21
+
+** Bug fixes
+- Fix duplicate workspace assignments when treemacs-mode active :: The
+  install function's native treemacs code path was firing alongside the
+  desired-state model, causing duplicate project entries.  The native
+  fallback is now gated behind =(not declarative-project-treemacs-mode)=.
+
+** New features
+- Workspace enforcement via advice :: Two new advice functions
+  (=after treemacs-switch-workspace= and =after treemacs--restore=)
+  re-apply desired state whenever treemacs switches or restores
+  workspaces, preventing external changes from overriding declared
+  assignments.
+
+** Tests
+- 7 new specs for fallback guard, advice lifecycle, and mode
+  registration.  Total spec count: 74 (up from 52).
+
+** Code quality
+- Added GPL-3.0 license headers to all secondary =.el= and test files.
+- Updated =.gitignore= with Emacs lock-file and autoload patterns.
+
 * 0.3.0 — 2026-03-20
 
 ** Bug fixes

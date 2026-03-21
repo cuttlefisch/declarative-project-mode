@@ -10,3 +10,13 @@
 # Undo-tree save-files
 *.~undo-tree
 flycheck_*.el
+
+# Lock files
+.#*
+
+# Auto-save files
+\#*\#
+
+# Package autoloads
+*-autoloads.el
+*-pkg.el
