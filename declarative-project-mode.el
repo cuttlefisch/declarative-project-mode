@@ -5,8 +5,8 @@
 ;; Author: Hayden Stanko <system.cuttle@gmail.com>
 ;; Maintainer: Hayden Stanko <system.cuttle@gmail.com>
 ;; Created: January 13, 2023
-;; Modified: March 20, 2026
-;; Version: 0.3.0
+;; Modified: March 21, 2026
+;; Version: 0.3.3
 ;; Keywords: convenience, tools, project
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
 ;; Package-Requires: ((emacs "28.1") (yaml "0.5.1"))

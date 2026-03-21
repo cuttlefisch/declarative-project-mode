@@ -159,6 +159,7 @@ Binds `cache-file' to the temporary cache path."
   (declare (indent 0))
   `(let* ((cache-file (make-temp-file "dpm-treemacs-cache-" nil ".el"))
           (declarative-project-treemacs--desired-state nil)
+          (declarative-project-treemacs--current-workspace-name nil)
           (declarative-project-treemacs-cache-file cache-file)
           (declarative-project-treemacs-mode nil)
           (treemacs--current-workspace-stub nil)

@@ -46,5 +46,5 @@ Doom's `:ui workspaces` module enables `treemacs-persp`, which sets scope type t
 
 - Emacs Lisp with `lexical-binding: t`
 - Package requires Emacs 28.1+
-- Tests: `make test` (uses Buttercup, 96 specs)
+- Tests: `make test` (uses Buttercup, 104 specs)
 - Test runner auto-detects straight.el (Doom) or Cask

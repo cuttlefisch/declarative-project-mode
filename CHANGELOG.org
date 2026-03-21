@@ -1,6 +1,24 @@
 #+title: Changelog
 #+author: Hayden Stanko
 
+* 0.3.3 — 2026-03-21
+
+** Bug fixes
+- Fix daemon-mode overwriting persisted workspace name on shutdown ::
+  In daemon mode, =delete-frame-functions= fires before =kill-emacs-hook=,
+  destroying the frame's treemacs scope shelf.  =--sync-before-persist=
+  then re-queried =(treemacs-current-workspace)=, which fell back to
+  the wrong workspace and overwrote the correct =--current-workspace-name=.
+  Fixed by (1) persisting the name to disk immediately in
+  =--on-workspace-switch= and (2) removing the re-capture from
+  =--sync-before-persist=.
+
+** Tests
+- 2 new specs: =--on-workspace-switch= disk round-trip, and
+  =--sync-before-persist= daemon scenario (wrong treemacs scope does
+  not overwrite persisted name).
+- Total spec count: 104 (up from 98 in 0.3.2).
+
 * 0.3.2 — 2026-03-21
 
 ** New features

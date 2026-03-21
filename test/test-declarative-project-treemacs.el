@@ -529,7 +529,7 @@
               (expect (memq #'declarative-project-treemacs--assign-declared-project
                             declarative-project--apply-treemacs-workspaces-hook)
                       :to-be-truthy)
-              (expect (memq #'declarative-project-treemacs--sync-workspace-list
+              (expect (memq #'declarative-project-treemacs--on-workspace-switch
                             treemacs-switch-workspace-hook)
                       :to-be-truthy)
               (expect (memq #'declarative-project-treemacs--on-select
@@ -547,7 +547,7 @@
         (expect (memq #'declarative-project-treemacs--assign-declared-project
                       declarative-project--apply-treemacs-workspaces-hook)
                 :to-equal nil)
-        (expect (memq #'declarative-project-treemacs--sync-workspace-list
+        (expect (memq #'declarative-project-treemacs--on-workspace-switch
                       treemacs-switch-workspace-hook)
                 :to-equal nil)
         (expect (memq #'declarative-project-treemacs--on-select
@@ -689,6 +689,24 @@
         (expect (treemacs-workspace->name (car treemacs--workspaces))
                 :to-equal "Synced"))))
 
+  (it "does not overwrite current-workspace-name from treemacs scope"
+    (with-treemacs-test-state
+      (let ((declarative-project-treemacs-mode t)
+            (treemacs--workspaces nil))
+        ;; User switched to "hobby splines" earlier — name is already set
+        (setq declarative-project-treemacs--current-workspace-name "hobby splines")
+        (setq declarative-project-treemacs--desired-state
+              (list (treemacs-workspace->create! :name "declarative project mode" :projects nil)
+                    (treemacs-workspace->create! :name "hobby splines" :projects nil)))
+        ;; Simulate daemon: treemacs-current-workspace returns wrong ws
+        ;; (frame's scope shelf is gone, falls back to first/wrong workspace)
+        (setf (treemacs-current-workspace)
+              (car declarative-project-treemacs--desired-state))
+        (declarative-project-treemacs--sync-before-persist)
+        ;; The persisted name must still be "hobby splines", not overwritten
+        (expect declarative-project-treemacs--current-workspace-name
+                :to-equal "hobby splines"))))
+
   (it "adds kill-emacs-hook on enable and removes on disable"
     (with-treemacs-test-state
       (let ((declarative-project--apply-treemacs-workspaces-hook nil)
@@ -748,6 +766,85 @@
         (declarative-project-treemacs-reset-cache)
         (expect 'declarative-project-treemacs--override-workspaces
                 :not :to-have-been-called)))))
+
+;;; ==========================================================================
+;;; current workspace persistence
+;;; ==========================================================================
+
+(describe "current workspace persistence"
+  (it "save-cache persists current workspace name to file"
+    (with-treemacs-test-state
+      (let ((ws (treemacs-workspace->create! :name "Active" :projects nil)))
+        (setq declarative-project-treemacs--desired-state (list ws))
+        (setq declarative-project-treemacs--current-workspace-name "Active")
+        (declarative-project-treemacs--save-cache)
+        (let ((content (with-temp-buffer
+                         (insert-file-contents cache-file)
+                         (buffer-string))))
+          (expect content :to-match "current-workspace-name")))))
+
+  (it "round-trips current workspace name through save+read"
+    (with-treemacs-test-state
+      (let ((ws (treemacs-workspace->create! :name "Persisted" :projects nil)))
+        (setq declarative-project-treemacs--desired-state (list ws))
+        (setq declarative-project-treemacs--current-workspace-name "Persisted")
+        (declarative-project-treemacs--save-cache)
+        ;; Clear and reload
+        (setq declarative-project-treemacs--current-workspace-name nil)
+        (setq declarative-project-treemacs--desired-state nil)
+        (declarative-project-treemacs--read-cache)
+        (expect declarative-project-treemacs--current-workspace-name
+                :to-equal "Persisted"))))
+
+  (it "override-workspaces restores persisted name instead of first"
+    (with-treemacs-test-state
+      (let* ((ws-a (treemacs-workspace->create! :name "Alpha" :projects nil))
+             (ws-b (treemacs-workspace->create! :name "Beta" :projects nil)))
+        (setq declarative-project-treemacs--desired-state (list ws-a ws-b))
+        (setq declarative-project-treemacs--current-workspace-name "Beta")
+        ;; Current workspace is nil (simulating fresh restart)
+        (setf (treemacs-current-workspace) nil)
+        (declarative-project-treemacs--override-workspaces)
+        (expect (treemacs-workspace->name (treemacs-current-workspace))
+                :to-equal "Beta"))))
+
+  (it "falls back to first when persisted name no longer exists"
+    (with-treemacs-test-state
+      (let ((ws (treemacs-workspace->create! :name "OnlyWS" :projects nil)))
+        (setq declarative-project-treemacs--desired-state (list ws))
+        (setq declarative-project-treemacs--current-workspace-name "Deleted")
+        (setf (treemacs-current-workspace) nil)
+        (declarative-project-treemacs--override-workspaces)
+        (expect (treemacs-workspace->name (treemacs-current-workspace))
+                :to-equal "OnlyWS"))))
+
+  (it "on-workspace-switch records current workspace name"
+    (with-treemacs-test-state
+      (let ((ws (treemacs-workspace->create! :name "Switched" :projects nil)))
+        (setq declarative-project-treemacs--desired-state (list ws))
+        (setf (treemacs-current-workspace) ws)
+        (declarative-project-treemacs--on-workspace-switch)
+        (expect declarative-project-treemacs--current-workspace-name
+                :to-equal "Switched"))))
+
+  (it "on-workspace-switch persists name to disk"
+    (with-treemacs-test-state
+      (let ((ws (treemacs-workspace->create! :name "Persisted-Switch" :projects nil)))
+        (setq declarative-project-treemacs--desired-state (list ws))
+        (setf (treemacs-current-workspace) ws)
+        (declarative-project-treemacs--on-workspace-switch)
+        ;; Clear in-memory name and reload from disk
+        (setq declarative-project-treemacs--current-workspace-name nil)
+        (setq declarative-project-treemacs--desired-state nil)
+        (declarative-project-treemacs--read-cache)
+        (expect declarative-project-treemacs--current-workspace-name
+                :to-equal "Persisted-Switch"))))
+
+  (it "reset-cache clears current workspace name"
+    (with-treemacs-test-state
+      (setq declarative-project-treemacs--current-workspace-name "Stale")
+      (declarative-project-treemacs-reset-cache)
+      (expect declarative-project-treemacs--current-workspace-name :to-be nil))))
 
 ;;; ==========================================================================
 ;;; Advice registration (mode enable/disable)

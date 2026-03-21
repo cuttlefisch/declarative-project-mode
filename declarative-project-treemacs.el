@@ -5,11 +5,11 @@
 ;; Author: Hayden Stanko <system.cuttle@gmail.com>
 ;; Maintainer: Hayden Stanko <system.cuttle@gmail.com>
 ;; Created: January 14, 2023
-;; Modified: March 20, 2026
-;; Version: 0.3.0
+;; Modified: March 21, 2026
+;; Version: 0.3.3
 ;; Keywords: convenience, tools, project
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
-;; Package-Requires: ((emacs "28.1") (treemacs "2.10") (declarative-project-mode "0.3.0"))
+;; Package-Requires: ((emacs "28.1") (treemacs "2.10") (declarative-project-mode "0.3.3"))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -51,6 +51,9 @@
 (defvar declarative-project-treemacs--desired-state nil
   "List of desired workspaces and project contents from declared workspaces.
 Initialized lazily when the mode is enabled.")
+
+(defvar declarative-project-treemacs--current-workspace-name nil
+  "Name of the last-selected workspace, persisted across sessions.")
 
 (defcustom declarative-project-treemacs-cache-file
   (expand-file-name "treemacs-declared-workspaces.el" user-emacs-directory)
@@ -135,14 +138,17 @@ missing fields (e.g. `is-disabled?')."
          declarative-project-treemacs--desired-state)))
 
 (defun declarative-project-treemacs--save-cache ()
-  "Write current desired state to cache file."
+  "Write current desired state and current workspace name to cache file."
   (declarative-project-treemacs--ensure-desired-state)
   (with-temp-file declarative-project-treemacs-cache-file
     (let ((standard-output (current-buffer)))
       (insert ";; -*- no-byte-compile: t -*-\n")
       (insert ";; declarative-project-treemacs cache — auto-generated\n")
       (prin1 `(setq declarative-project-treemacs--desired-state
-                     ',declarative-project-treemacs--desired-state)))))
+                     ',declarative-project-treemacs--desired-state))
+      (insert "\n")
+      (prin1 `(setq declarative-project-treemacs--current-workspace-name
+                     ',declarative-project-treemacs--current-workspace-name)))))
 
 (defun declarative-project-treemacs--read-cache ()
   "Read the desired state from the cache file.
@@ -175,6 +181,7 @@ or babel blocks.  After resetting, re-run your declarative-project
 installs to repopulate."
   (interactive)
   (setq declarative-project-treemacs--desired-state nil)
+  (setq declarative-project-treemacs--current-workspace-name nil)
   (declarative-project-treemacs--ensure-desired-state)
   (declarative-project-treemacs--save-cache)
   (when declarative-project-treemacs-mode
@@ -273,7 +280,10 @@ Prevents treemacs from restoring its persist file by setting the
   (condition-case nil
       (let* ((current (treemacs-current-workspace))
              (name (and current (treemacs-workspace->name current)))
-             (target (or (and name (declarative-project-treemacs--workspaces-by-name name))
+             (target (or (and declarative-project-treemacs--current-workspace-name
+                              (declarative-project-treemacs--workspaces-by-name
+                               declarative-project-treemacs--current-workspace-name))
+                         (and name (declarative-project-treemacs--workspaces-by-name name))
                          (car declarative-project-treemacs--desired-state))))
         (when (and target (not (eq current target)))
           (setf (treemacs-current-workspace) target)
@@ -298,6 +308,19 @@ treemacs or the user control which workspace is active."
   "Re-apply declared workspace list after treemacs window is selected.
 Called via `treemacs-select-functions'; REASON is ignored."
   (declarative-project-treemacs--sync-workspace-list))
+
+(defun declarative-project-treemacs--on-workspace-switch ()
+  "Record current workspace name and sync workspace list.
+Used on `treemacs-switch-workspace-hook' to persist the user's
+workspace selection across sessions."
+  (declarative-project-treemacs--sync-workspace-list)
+  (condition-case nil
+      (let ((ws (treemacs-current-workspace)))
+        (when ws
+          (setq declarative-project-treemacs--current-workspace-name
+                (treemacs-workspace->name ws))
+          (declarative-project-treemacs--save-cache)))
+    (error nil)))
 
 (defun declarative-project-treemacs--around-exclusive-display (orig-fn)
   "Show treemacs without modifying workspace content when our mode is active.
@@ -348,7 +371,8 @@ Runs on `kill-emacs-hook' at depth -90 (before treemacs's own
 `treemacs--persist' which runs at default depth 0)."
   (when declarative-project-treemacs-mode
     (declarative-project-treemacs--ensure-desired-state)
-    (setq treemacs--workspaces declarative-project-treemacs--desired-state)))
+    (setq treemacs--workspaces declarative-project-treemacs--desired-state)
+    (declarative-project-treemacs--save-cache)))
 
 ;;; --- Mode definition ---
 
@@ -403,7 +427,7 @@ creation when active."
         (add-hook 'declarative-project--apply-treemacs-workspaces-hook
                   #'declarative-project-treemacs--assign-declared-project)
         (add-hook 'treemacs-switch-workspace-hook
-                  #'declarative-project-treemacs--sync-workspace-list)
+                  #'declarative-project-treemacs--on-workspace-switch)
         (add-hook 'treemacs-select-functions
                   #'declarative-project-treemacs--on-select))
     (declarative-project-treemacs--save-cache)
@@ -421,7 +445,7 @@ creation when active."
     (remove-hook 'declarative-project--apply-treemacs-workspaces-hook
                  #'declarative-project-treemacs--assign-declared-project)
     (remove-hook 'treemacs-switch-workspace-hook
-                 #'declarative-project-treemacs--sync-workspace-list)
+                 #'declarative-project-treemacs--on-workspace-switch)
     (remove-hook 'treemacs-select-functions
                  #'declarative-project-treemacs--on-select)))
 
