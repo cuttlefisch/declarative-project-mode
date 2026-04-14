@@ -215,6 +215,7 @@ EXTRA-KEYS is an alist of additional keys to set in the resource hash."
                            (file-name-as-directory (expand-file-name rd))))
          (default-directory (or root-from-spec
                                 (file-name-as-directory (expand-file-name project-dir)))))
+    (make-directory default-directory t)
     (puthash 'project-root default-directory project-resources)
     (dolist (pair extra-keys)
       (puthash (car pair) (cdr pair) project-resources))
