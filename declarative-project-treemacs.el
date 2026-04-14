@@ -6,7 +6,7 @@
 ;; Maintainer: Hayden Stanko <system.cuttle@gmail.com>
 ;; Created: January 14, 2023
 ;; Modified: March 21, 2026
-;; Version: 0.3.3
+;; Version: 0.3.4
 ;; Keywords: convenience, tools, project
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
 ;; Package-Requires: ((emacs "28.1") (treemacs "2.10") (declarative-project-mode "0.3.3"))
