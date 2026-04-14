@@ -299,7 +299,25 @@
                 (expect (gethash 'project-root result)
                         :to-equal (file-name-as-directory
                                    (expand-file-name root-dir)))))
-          (delete-directory root-dir t))))))
+          (delete-directory root-dir t)))))
+
+  (it "creates non-existent root-directory before running pipeline"
+    (with-temp-project-dir
+      (let* ((novel-root (concat (make-temp-file "dpm-novel-" t) "/subdir")))
+        (unwind-protect
+            (progn
+              (spy-on 'declarative-project--check-required-resources)
+              (spy-on 'declarative-project--install-project-dependencies)
+              (spy-on 'declarative-project--copy-local-files)
+              (spy-on 'declarative-project--create-symlinks)
+              (spy-on 'declarative-project--apply-treemacs-workspaces)
+              (let* ((yaml (format "name: Test\nroot-directory: %s\n" novel-root))
+                     (result (declarative-project--install-from-content
+                              yaml project-dir)))
+                (expect (gethash 'project-root result)
+                        :to-equal (file-name-as-directory
+                                   (expand-file-name novel-root)))))
+          (delete-directory (file-name-directory novel-root) t))))))
 
 ;;; ==========================================================================
 ;;; declarative-project--install-project (parsing)

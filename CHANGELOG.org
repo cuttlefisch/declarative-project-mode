@@ -1,6 +1,20 @@
 #+title: Changelog
 #+author: Hayden Stanko
 
+* 0.3.4 — 2026-04-14
+
+** Bug fixes
+- Fix =--install-from-content= failing when =root-directory= doesn't exist ::
+  =call-process= requires =default-directory= to be a valid path.  When
+  =root-directory= in the spec pointed to a not-yet-cloned directory, the
+  install pipeline crashed with "No such file or directory".  Now
+  =(make-directory default-directory t)= is called before the pipeline runs.
+
+** Tests
+- 1 new spec: non-existent =root-directory= is created before pipeline
+  stages execute.
+- Total spec count: 105 (up from 104 in 0.3.3).
+
 * 0.3.3 — 2026-03-21
 
 ** Bug fixes

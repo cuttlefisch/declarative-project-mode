@@ -6,7 +6,7 @@
 ;; Maintainer: Hayden Stanko <system.cuttle@gmail.com>
 ;; Created: January 13, 2023
 ;; Modified: March 21, 2026
-;; Version: 0.3.3
+;; Version: 0.3.4
 ;; Keywords: convenience, tools, project
 ;; Homepage: https://github.com/cuttlefisch/declarative-project-mode
 ;; Package-Requires: ((emacs "28.1") (yaml "0.5.1"))
@@ -215,6 +215,7 @@ EXTRA-KEYS is an alist of additional keys to set in the resource hash."
                            (file-name-as-directory (expand-file-name rd))))
          (default-directory (or root-from-spec
                                 (file-name-as-directory (expand-file-name project-dir)))))
+    (make-directory default-directory t)
     (puthash 'project-root default-directory project-resources)
     (dolist (pair extra-keys)
       (puthash (car pair) (cdr pair) project-resources))
